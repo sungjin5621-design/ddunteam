@@ -1,10 +1,9 @@
-# 뚠뚠팀 v36.26 — Supabase 혈맹원 저장 권한 수정
+# 뚠뚠팀 v36.27
 
-이번 문제는 프론트엔드가 아니라 Supabase `clan_members` 테이블의 UPDATE RLS 정책이 없는/부족한 상태에서 발생했습니다.
+혈맹원 정보 저장 시 Supabase `UPDATE` RLS 권한 오류를 해결한 버전입니다.
 
-## 반드시 1회 실행
-Supabase Dashboard → SQL Editor에서 `supabase_permission_fix.sql` 전체를 실행하세요.
+## 중요
+`supabase_permission_fix.sql`은 GitHub에 올리는 것만으로 실행되지 않습니다.
+Supabase Dashboard → SQL Editor에서 파일 내용을 한 번 실행해야 합니다.
 
-실행 후 새로고침하면 페이지 소유자/군주/관리자/수호가 혈맹원 레벨·웨폰·등급 등을 저장할 수 있습니다.
-
-닉네임은 프론트엔드에서 페이지 소유자(베키)만 수정할 수 있도록 유지됩니다.
+이 SQL은 `authenticated`(Supabase Anonymous Auth 포함) 세션의 `clan_members` UPDATE를 허용합니다.
