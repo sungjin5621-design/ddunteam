@@ -1054,6 +1054,66 @@ window.updateParticipantSummary=function(){
   };
 })();
 </script>
+
+<style id="schedule-final-ui-fix">
+  #participantPicker.participant-picker.open{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:10px;max-height:300px;overflow:auto}
+  #participantPicker .participant-row{display:flex;align-items:center;gap:10px;min-height:48px;padding:10px 12px;border:1px solid #293747;border-radius:9px;background:#0d141d;color:#e7edf5;font-size:14px;font-weight:700;cursor:pointer;box-sizing:border-box}
+  #participantPicker .participant-row:hover{background:#141f2b;border-color:#3e5d7d}
+  #participantPicker .participant-row:has(input:checked){background:#18304a;border-color:#5b8fc1;box-shadow:inset 0 0 0 1px #5b8fc1}
+  #participantPicker .participant-row input{width:20px!important;height:20px!important;flex:none}
+  .schedule-default-note{font-size:11px;color:#7f8c9f;margin-top:3px}
+</style>
+<script>
+(function(){
+  function esc(v){return typeof escapeHtml==='function'?escapeHtml(v):String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  function getParts(s){try{return typeof scheduleParticipants==='function'?scheduleParticipants(s):[];}catch(e){return []}}
+  window.openScheduleEditor=function(id,date,hour){
+    if(!canManage())return toast('일정 관리는 운영진만 가능합니다.');
+    let s;
+    if(id===null){
+      const hh=(hour===undefined||hour===null)?22:Number(hour);
+      s={id:null,date:date||todayStr(),start:hh,end:Math.min(24,hh+1),title:'',participants:[]};
+    }else{
+      s=(schedules||[]).find(x=>String(x.id)===String(id));
+      if(!s)return toast('일정을 찾을 수 없습니다.');
+    }
+    const p=getParts(s);
+    const memberList=Array.isArray(members)?members:[];
+    const picker=memberList.map(m=>{
+      const nick=String(m?.[0]??'');
+      if(!nick)return '';
+      return `<label class="participant-row"><input type="checkbox" value="${esc(nick)}" ${p.includes(nick)?'checked':''} onchange="updateParticipantSummary()"><span>${esc(nick)}</span></label>`;
+    }).join('');
+    openModal(`<div class="modal-head"><div><h3>${id===null?'일정 추가':'일정 수정'}</h3><div class="schedule-default-note">날짜와 시간을 입력하고 참여 인원을 선택해주세요.</div></div><button class="close" onclick="closeModal()">×</button></div><div class="form"><label>날짜<input id="sd" type="date" value="${esc(s.date)}"></label><div class="row"><label>시작 시간<input id="ss" type="number" min="0" max="23" value="${Number(s.start)}"></label><label>종료 시간<input id="se" type="number" min="1" max="24" value="${Number(s.end)}"></label></div><div class="picker-section"><div class="picker-title">참여 인원</div><div id="participantSummary" class="selected-summary" onclick="toggleParticipantPicker()">${p.length?p.map(n=>`<span class="chip">${esc(n)}</span>`).join(''):'참여 인원을 선택해주세요'}</div><div id="participantPicker" class="participant-picker">${picker}</div></div><label>일정 내용<input id="st" value="${esc(s.title)}" placeholder="예: 공성전 준비 / 레이드 / 회의"></label></div><div class="modal-actions">${id!==null?`<button class="danger" onclick="deleteSchedule(${id})">삭제</button>`:''}<button onclick="closeModal()">취소</button><button class="primary" onclick="saveSchedule(${id===null?'null':id})">저장</button></div>`,'small');
+  };
+  window.saveSchedule=async function(id){
+    if(!canManage())return toast('일정 관리 권한이 없습니다.');
+    const date=document.getElementById('sd')?.value;
+    const start=Number(document.getElementById('ss')?.value);
+    const end=Number(document.getElementById('se')?.value);
+    const title=(document.getElementById('st')?.value||'').trim();
+    const participants=[...document.querySelectorAll('#participantPicker input:checked')].map(x=>x.value);
+    if(!date||!title||!Number.isInteger(start)||!Number.isInteger(end)||start<0||start>23||end<1||end>24||end<=start)return toast('날짜/시간/내용을 확인해주세요.');
+    if(typeof cloudReady!=='undefined'&&cloudReady){
+      const payload={clan_id:CLOUD_CLAN_ID,event_date:date,start_hour:start,end_hour:end,title,count_text:JSON.stringify({participants}),created_by_nickname:currentNick};
+      let result;
+      if(id===null) result=await cloudClient.from('clan_schedules').insert(payload);
+      else result=await cloudClient.from('clan_schedules').update(payload).eq('id',id);
+      if(result.error)return cloudErr(result.error);
+      await cloudRefresh();
+      closeModal();
+      toast('일정을 저장했습니다.');
+      return;
+    }
+    const item={id:id===null?Date.now():id,date,start,end,title,count:JSON.stringify({participants}),participants};
+    if(id===null)schedules.push(item);else{const idx=schedules.findIndex(x=>String(x.id)===String(id));if(idx<0)return toast('일정을 찾을 수 없습니다.');schedules[idx]=item;}
+    if(typeof save==='function')save();
+    if(typeof renderAll==='function')renderAll();
+    closeModal();toast('일정을 저장했습니다.');
+  };
+})();
+</script>
+
 </body>
 </html>
 
