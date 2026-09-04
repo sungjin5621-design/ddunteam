@@ -1874,3 +1874,43 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
   setTimeout(sync23,50);setTimeout(sync23,300);setTimeout(sync23,1000);setInterval(sync23,500);
 })();
 </script>
+
+<!-- v36.25: verify Supabase member update and immediately reload authoritative data -->
+<script>
+(function(){
+  window.saveMember=async function(i){
+    if(typeof canClanManage==='function'&&!canClanManage())return toast('혈맹원 관리는 페이지 소유자/군주/관리자만 가능합니다.');
+    if(typeof cloudReady!=='undefined'&&!cloudReady)return toast('서버 연결 중입니다. 잠시 후 다시 시도해주세요.');
+    const editing=i!==null&&i!==undefined;
+    const target=editing?members[i]:null;
+    if(editing&&!target)return toast('혈맹원을 찾을 수 없습니다.');
+    const original=editing?String(target[0]||''):'';
+    const nickEl=document.getElementById('f0');
+    const n=editing&&!((typeof ownerUI==='function')&&ownerUI())?original:(nickEl?.value.trim()||'');
+    const lvl=Number(document.getElementById('f1')?.value||0);
+    const w=String(document.getElementById('f2')?.value||'모름');
+    const r=String(document.getElementById('f3')?.value||'일반');
+    const rank=document.getElementById('fRank')?.value.trim()||'';
+    if(!n)return toast('닉네임을 입력해주세요.');
+    if(editing&&original==='베키'&&n!=='베키')return toast('페이지 소유자 닉네임은 변경할 수 없습니다.');
+    if(members.some((m,idx)=>String(m[0])===n&&idx!==i))return toast('이미 사용 중인 닉네임입니다.');
+    const id=editing?target[4]:null;
+    if(editing&&!id)return toast('선택된 혈맹원의 ID를 확인할 수 없습니다.');
+    const payload={clan_id:CLOUD_CLAN_ID,nickname:n,level:lvl,weapon:w,role:r};
+    let result;
+    if(editing){
+      result=await cloudClient.from('clan_members').update(payload).eq('id',id).select('*').maybeSingle();
+    }else{
+      result=await cloudClient.from('clan_members').insert(payload).select('*').maybeSingle();
+    }
+    if(result.error)return cloudErr(result.error);
+    if(!result.data)return toast('혈맹원 정보 저장 권한이 없습니다. Supabase 권한을 확인해주세요.');
+    if(typeof saveRank==='function')saveRank(n,rank);
+    await cloudLoad();
+    renderMembers();
+    if(typeof renderAll==='function')renderAll();
+    closeModal();
+    toast('혈맹원 정보가 저장되었습니다.');
+  };
+})();
+</script>
