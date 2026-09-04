@@ -31,6 +31,26 @@
 
 .mini-games{min-height:760px}.mini-game-grid,.sim-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:18px}.mini-game-card{min-height:150px;border:1px solid var(--border,#263244);border-radius:16px;background:linear-gradient(145deg,#111a28,#0b111c);color:#eef4ff;padding:24px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:8px}.mini-game-card:hover{border-color:#5aa9ff;transform:translateY(-1px)}.mini-game-card span{font-size:32px}.mini-game-card b{font-size:19px}.mini-game-card small{color:#8e9bae;line-height:1.5}.mini-toolbar{display:flex;align-items:center;gap:10px;margin:16px 0}.mini-count{margin-left:auto;font-weight:700}.mini-player-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-height:420px;overflow:auto;padding:4px}.mini-player{display:flex;align-items:center;gap:8px;padding:11px 12px;border:1px solid #263244;border-radius:10px;background:#0d1521}.mini-custom{display:flex;gap:8px;margin-top:14px}.mini-custom input,.sim-form input{flex:1;min-width:0;background:#0b111c;border:1px solid #2a374a;color:#fff;border-radius:9px;padding:11px}.mini-result{margin-top:18px;padding:16px;border:1px solid #263244;border-radius:12px;background:#0b111c;line-height:1.7}.mini-result h4{margin:0 0 10px}.mini-result-row{display:grid;grid-template-columns:70px 1fr 100px;gap:8px;padding:9px 0;border-bottom:1px solid #1e2a39}.mini-result-row:last-child{border-bottom:0}.sim-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:18px}.sim-form label{display:flex;flex-direction:column;gap:7px;color:#9aa7b8;font-size:13px}.sim-form input{width:100%;box-sizing:border-box;color:#fff}.mini-player input{accent-color:#5aa9ff}@media(max-width:800px){.mini-game-grid,.sim-grid,.sim-form{grid-template-columns:1fr}.mini-player-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
+
+<style id="schedule-ui-polish">
+/* 일정 참여 인원 UI 개선 */
+.modal.small{width:min(900px,96vw)}
+.picker-section{gap:10px}
+.picker-title{font-size:14px!important;font-weight:800;color:#dbe3ee!important;margin-top:2px}
+.selected-summary{min-height:48px!important;padding:10px 12px!important;font-size:14px!important;gap:7px!important;background:#0b121b!important}
+.selected-summary .chip{padding:5px 9px!important;border-radius:6px!important;font-size:12px!important;background:#1b2a3b!important;color:#e5edf7}
+.participant-picker{margin-top:0!important;padding:10px!important;max-height:380px!important;overflow-y:auto!important;overflow-x:hidden!important;background:#080e15!important;border:1px solid #344354!important;border-radius:10px!important}
+.participant-picker.open{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:7px 9px!important}
+.participant-row{min-height:48px!important;padding:9px 11px!important;gap:10px!important;border:1px solid #263443!important;background:#0d151f!important;border-radius:8px!important;transition:.12s}
+.participant-row:hover{background:#152131!important;border-color:#40566f!important}
+.participant-row:has(input:checked){background:#142a3e!important;border-color:#4e7ca8!important;box-shadow:inset 0 0 0 1px #355a7c}
+.participant-row input{width:20px!important;height:20px!important;margin:0!important;accent-color:#6e9fe0!important}
+.participant-row span{font-size:14px!important;font-weight:700!important;color:#dbe4ef!important;line-height:1.2!important}
+.form label{font-size:13px!important}
+.form input,.form textarea,.form select{font-size:14px!important}
+@media(max-width:760px){.participant-picker.open{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:520px){.participant-picker.open{grid-template-columns:1fr!important}}
+</style>
 </head>
 <body>
 <div id="loginGate" class="login-gate">
@@ -898,6 +918,27 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
 
   document.addEventListener('DOMContentLoaded',()=>{setTimeout(()=>{refreshOwnerControls(); if(typeof renderMembers==='function')renderMembers();},300);});
 })();
+</script>
+
+<script id="schedule-ui-polish-script">
+window.openScheduleEditor=function(id,date,hour){
+  if(!canManage())return toast('일정 관리는 운영진만 가능합니다.');
+  const s=id===null?{id:null,date:date||todayStr(),start:hour??21,end:(hour??21)+1,title:'',participants:[]}:schedules.find(x=>x.id===id);
+  if(!s)return toast('일정을 찾을 수 없습니다.');
+  const p=scheduleParticipants(s);
+  const participantHtml=members.map(m=>{
+    const nick=String(m[0]);
+    return `<label class="participant-row"><input type="checkbox" value="${escapeHtml(nick)}" ${p.includes(nick)?'checked':''} onchange="updateParticipantSummary()"><span>${escapeHtml(nick)}</span></label>`;
+  }).join('');
+  openModal(`<div class="modal-head"><div><h3>${id===null?'일정 추가':'일정 수정'}</h3><div style="margin-top:4px;color:#718096;font-size:12px">날짜와 시간을 입력하고 참여 인원을 선택해주세요.</div></div><button class="close" onclick="closeModal()">×</button></div><div class="form"><label>날짜<input id="sd" type="date" value="${s.date}"></label><div class="row"><label>시작 시간<input id="ss" type="number" min="0" max="23" value="${s.start}"></label><label>종료 시간<input id="se" type="number" min="1" max="24" value="${s.end}"></label></div><div class="picker-section"><div class="picker-title">참여 인원 <span id="participantCount" style="font-size:12px;color:#7890aa;font-weight:500">${p.length?`· ${p.length}명 선택됨`:''}</span></div><div id="participantSummary" class="selected-summary" onclick="toggleParticipantPicker()">${p.length?p.map(n=>`<span class="chip">${escapeHtml(n)}</span>`).join(''):'참여 인원을 선택해주세요'}</div><div id="participantPicker" class="participant-picker open">${participantHtml}</div></div><label>일정 내용<input id="st" value="${escapeHtml(s.title)}" placeholder="예: 공성전 준비 / 레이드 / 회의"></label></div><div class="modal-actions">${id!==null?`<button class="danger" onclick="deleteSchedule(${id})">삭제</button>`:''}<button onclick="closeModal()">취소</button><button class="primary" onclick="saveSchedule(${id===null?'null':id})">저장</button></div>`,'small');
+};
+window.updateParticipantSummary=function(){
+  const checked=[...document.querySelectorAll('#participantPicker input:checked')].map(x=>x.value);
+  const el=document.getElementById('participantSummary');
+  const count=document.getElementById('participantCount');
+  if(el)el.innerHTML=checked.length?checked.map(n=>`<span class="chip">${escapeHtml(n)}</span>`).join(''):'참여 인원을 선택해주세요';
+  if(count)count.textContent=checked.length?`· ${checked.length}명 선택됨`:'';
+};
 </script>
 </body>
 </html>
