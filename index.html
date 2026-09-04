@@ -319,8 +319,7 @@ async function loginDdu(){
     if(!session){const r=await cloudClient.auth.signInAnonymously();if(r.error)throw r.error;session=r.data.session;}
     cloudUser=session.user;await cloudLoad();
     if(!members.some(m=>m[0]===nick))throw new Error('등록된 혈맹원 닉네임과 일치하지 않습니다.');
-    const r=await cloudClient.rpc('claim_nickname',{p_clan_id:CLOUD_CLAN_ID,p_nickname:nick});if(r.error)throw r.error;
-    localStorage.setItem(LOGIN_KEY,JSON.stringify({nickname:nick,at:Date.now()}));currentNick=nick;await cloudLoad();cloudReady=true;
+    localStorage.setItem(LOGIN_KEY,JSON.stringify({nickname:nick,at:Date.now()}));currentNick=nick;cloudReady=true;
     const ownerBtn=document.getElementById('ownerClaimBtn');if(ownerBtn)ownerBtn.style.display=cloudOwnerId?'none':'inline-grid';
     const adminBtn=document.getElementById('adminBtn');if(adminBtn)adminBtn.style.display=isPageOwner()?'inline-block':'none';
     const logoutBtn=document.getElementById('logoutBtn');if(logoutBtn)logoutBtn.style.display='inline-grid';
@@ -335,8 +334,7 @@ async function cloudInit(){
   cloudUser=session.user;await cloudLoad();
   if(!members.some(m=>m[0]===saved.nickname)){localStorage.removeItem(LOGIN_KEY);showLogin();return;}
   const mine=members.find(m=>m[0]===saved.nickname);
-  if(mine[6]!==cloudUser.id){const r=await cloudClient.rpc('claim_nickname',{p_clan_id:CLOUD_CLAN_ID,p_nickname:saved.nickname});if(r.error){localStorage.removeItem(LOGIN_KEY);showLogin();setLoginError('이 닉네임은 다른 환경에서 사용 중입니다. 다시 로그인해주세요.');return;}await cloudLoad();}
-  currentNick=saved.nickname;cloudReady=true;
+  currentNick=mine?saved.nickname:'설정 필요';cloudReady=true;
   const ownerBtn=document.getElementById('ownerClaimBtn');if(ownerBtn)ownerBtn.style.display=cloudOwnerId?'none':'inline-grid';
   const adminBtn=document.getElementById('adminBtn');if(adminBtn)adminBtn.style.display=isPageOwner()?'inline-block':'none';
   const logoutBtn=document.getElementById('logoutBtn');if(logoutBtn)logoutBtn.style.display='inline-grid';
@@ -358,8 +356,10 @@ async function cloudLoad(){
   notices=n.data.map(x=>({id:x.id,title:x.title,date:new Date(x.created_at).toISOString().slice(0,10).replaceAll('-','.'),body:x.body,image:x.image_url,tag:x.tag,author:x.author_nickname,created_at:x.created_at,updated_at:x.updated_at}));
   schedules=s.data.map(x=>({id:x.id,date:x.event_date,start:x.start_hour,end:x.end_hour,title:x.title,count:x.count_text}));
   categories=k.data.map(x=>({id:x.category_key,label:x.label,order:x.order_value,fixed:x.fixed}));
+  const saved=JSON.parse(localStorage.getItem(LOGIN_KEY)||'null');
+  const savedMember=saved?.nickname?members.find(x=>x[0]===saved.nickname):null;
   const mine=members.find(x=>x[6]===cloudUser.id);
-  currentNick=mine?mine[0]:'설정 필요';
+  currentNick=savedMember?savedMember[0]:(mine?mine[0]:'설정 필요');
 }
 function cloudSubscribe(){
   cloudClient.channel('ddunteam-live').on('postgres_changes',{event:'*',schema:'public',table:'clans',filter:'id=eq.ddunteam'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'clan_members',filter:'clan_id=eq.ddunteam'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'clan_notices',filter:'clan_id=eq.ddunteam'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'clan_schedules',filter:'clan_id=eq.ddunteam'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'clan_categories',filter:'clan_id=eq.ddunteam'},()=>cloudRefresh()).subscribe();
@@ -376,8 +376,8 @@ async function setCurrentNick(){
   const n=document.getElementById('nickInput').value.trim();
   if(!n)return toast('닉네임을 입력해주세요.');
   if(!cloudReady)return toast('서버 연결 중입니다.');
-  const {data,error}=await cloudClient.rpc('claim_nickname',{p_clan_id:CLOUD_CLAN_ID,p_nickname:n});
-  if(error)return cloudErr(error);
+  if(!members.some(m=>m[0]===n))return toast('등록된 혈맹원 닉네임과 일치하지 않습니다.');
+  localStorage.setItem(LOGIN_KEY,JSON.stringify({nickname:n,at:Date.now()}));
   currentNick=n;renderCurrent();renderMembers();toast(n+'님으로 설정했습니다.');
 }
 async function saveMember(i){if(!canClanManage())return toast('혈맹원 관리는 페이지 소유자/군주만 가능합니다.');const n=document.getElementById('f0').value.trim(),lvl=+document.getElementById('f1').value,w=document.getElementById('f2').value,r=document.getElementById('f3').value;if(!n)return toast('닉네임을 입력해주세요.');if(i!==null&&members[i][0]==='베키'&&n!=='베키')return toast('페이지 소유자 닉네임은 변경할 수 없습니다.');if(members.some((m,idx)=>m[0]===n&&idx!==i))return toast('이미 사용 중인 닉네임입니다.');const payload={clan_id:CLOUD_CLAN_ID,nickname:n,level:lvl,weapon:w,role:r};const q=i===null?cloudClient.from('clan_members').insert(payload):cloudClient.from('clan_members').update(payload).eq('id',members[i][4]);const {error}=await q;if(error)return cloudErr(error);await cloudRefresh();closeModal();toast('혈맹원 정보가 저장되었습니다.')}
