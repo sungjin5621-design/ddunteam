@@ -1577,3 +1577,99 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
   }catch(e){}
 })();
 </script>
+
+
+<style id="v3617-owner-only-fix">
+/* v36.17: only page owner can see admin button; non-owner nickname is blurred/locked */
+.member-nick-owner-lock{filter:blur(5px);cursor:not-allowed!important;user-select:none;background:#090f16!important;}
+</style>
+<script>
+/* v36.17 final overrides */
+(function(){
+  const pageOwnerOnly=()=>!!(window.cloudUser&&window.cloudOwnerId&&window.cloudUser.id===window.cloudOwnerId);
+  window.__v3617PageOwnerOnly=pageOwnerOnly;
+
+  function syncAdminButton(){
+    const b=document.getElementById('adminBtn');
+    if(b)b.style.display=pageOwnerOnly()?'inline-block':'none';
+  }
+  window.__v3617SyncAdminButton=syncAdminButton;
+
+  /* Existing permission functions may be broader for other management tasks.
+     Admin-center UI/access itself is strictly owner-only. */
+  const baseOpenAdmin=window.openAdminCenter;
+  window.openAdminCenter=function(){
+    if(!pageOwnerOnly())return toast('관리자 센터는 페이지 소유자만 사용할 수 있습니다.');
+    return baseOpenAdmin.apply(this,arguments);
+  };
+
+  const baseRefreshOwnerControls=window.refreshOwnerControls;
+  window.refreshOwnerControls=function(){
+    if(typeof baseRefreshOwnerControls==='function')baseRefreshOwnerControls.apply(this,arguments);
+    syncAdminButton();
+  };
+
+  /* Keep the admin button hidden after cloud load/refresh even if legacy code
+     temporarily shows it according to the broader canManage() permission. */
+  ['cloudLoad','cloudRefresh'].forEach(fn=>{
+    const base=window[fn];
+    if(typeof base==='function' && !window['__v3617_'+fn]){
+      window['__v3617_'+fn]=true;
+      window[fn]=async function(){
+        const r=await base.apply(this,arguments);
+        syncAdminButton();
+        return r;
+      };
+    }
+  });
+
+  const baseRenderCurrent=window.renderCurrent;
+  if(typeof baseRenderCurrent==='function' && !window.__v3617RenderCurrentWrapped){
+    window.__v3617RenderCurrentWrapped=true;
+    window.renderCurrent=function(){
+      const r=baseRenderCurrent.apply(this,arguments);
+      syncAdminButton();
+      return r;
+    };
+  }
+
+  /* Existing-member nickname: owner can edit; everyone else sees a blurred,
+     non-editable field. New-member nickname remains editable for authorized managers. */
+  window.openMemberModal=function(i=null){
+    if(!canClanManage())return toast('혈맹원 정보 수정은 페이지 소유자/군주/관리자만 가능합니다.');
+    const m=i===null?['',90,'모름','일반','','']:members[i];
+    if(i!==null&&!m)return toast('혈맹원을 찾을 수 없습니다.');
+    const ranks=(typeof getRanks==='function'?getRanks():{});
+    const rankVal=ranks[m[0]]??'';
+    const selectedWeapon=m[2]||'모름';
+    const locked=(i!==null&&!pageOwnerOnly());
+    const nickAttrs=locked?'readonly tabindex="-1" class="member-nick-owner-lock" title="페이지 소유자만 닉네임을 수정할 수 있습니다."':'';
+    openModal(`<div class="modal-head"><h3>${i===null?'혈맹원 추가':'혈맹원 프로필 수정'}</h3><button class="close" onclick="closeModal()">×</button></div><div class="form"><div class="row"><label>닉네임<input id="f0" value="${escapeHtml(m[0])}" ${nickAttrs}></label><label>레벨<input id="f1" type="number" value="${m[1]||90}"></label></div><label>등수<input id="fRank" type="number" min="1" placeholder="등수 입력 (선택)" value="${escapeHtml(String(rankVal))}"></label><div class="picker-section"><div class="picker-title">웨폰</div><input id="f2" type="hidden" value="${escapeHtml(selectedWeapon)}"><div class="weapon-grid">${weaponNames.map(w=>`<button type="button" class="weapon-choice ${w===selectedWeapon?'active':''}" onclick="selectWeapon('${escapeHtml(w)}')">${escapeHtml(w)}</button>`).join('')}</div></div><label>등급<select id="f3">${['군주','관리자','수호','일반'].map(r=>`<option ${r===m[3]?'selected':''}>${r}</option>`).join('')}</select></label></div><div class="modal-actions"><button onclick="closeModal()">취소</button><button class="primary" onclick="saveMember(${i===null?'null':i})">저장</button></div>`,'small');
+  };
+
+  window.saveMember=async function(i){
+    if(!canClanManage())return toast('혈맹원 관리는 페이지 소유자/군주/관리자만 가능합니다.');
+    const editing=i!==null&&members[i];
+    const original=editing?members[i][0]:'';
+    const nickEl=document.getElementById('f0');
+    const n=(editing&&!pageOwnerOnly())?original:(nickEl?.value.trim()||'');
+    const lvl=+document.getElementById('f1').value;
+    const w=document.getElementById('f2').value;
+    const r=document.getElementById('f3').value;
+    const rank=document.getElementById('fRank')?.value.trim()||'';
+    if(!n)return toast('닉네임을 입력해주세요.');
+    if(members.some((m,idx)=>m[0]===n&&idx!==i))return toast('이미 사용 중인 닉네임입니다.');
+    const payload={clan_id:CLOUD_CLAN_ID,nickname:n,level:lvl,weapon:w,role:r};
+    const q=editing?cloudClient.from('clan_members').update(payload).eq('id',members[i][4]):cloudClient.from('clan_members').insert(payload);
+    const {error}=await q;
+    if(error)return cloudErr(error);
+    if(typeof saveRank==='function')saveRank(n,rank);
+    await cloudRefresh();
+    closeModal();
+    toast('혈맹원 정보가 저장되었습니다.');
+  };
+
+  document.addEventListener('DOMContentLoaded',syncAdminButton);
+  setTimeout(syncAdminButton,0);
+})();
+</script>
