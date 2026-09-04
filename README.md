@@ -1,4 +1,4 @@
-# 뚠뚠팀 혈맹 운영 — 공유 웹앱 v1
+# 뚠뚠팀 혈맹 운영 — 공유 웹앱 v1 
 
 기존 뚠뚠팀 UI를 유지하면서 **Supabase Auth + Postgres + Storage + Realtime**을 연결한 공유형 웹앱 배포 패키지입니다.
 
