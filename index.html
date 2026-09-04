@@ -329,28 +329,41 @@ async function loginDdu(){
   const nick=document.getElementById('loginNick').value.trim(),pw=document.getElementById('loginPw').value;
   if(!nick)return setLoginError('닉네임을 입력해주세요.');
 
-  const btn=document.getElementById('loginSubmit');btn.disabled=true;setLoginError('접속 정보 확인 중...');
+  const btn=document.getElementById('loginSubmit');
+  btn.disabled=true;
+  setLoginError('접속 정보 확인 중...');
   try{
-    // 로그인할 때 브라우저에 남아있는 오래된 members가 아니라
-    // Supabase의 최신 혈맹원 목록을 먼저 확인합니다.
-    const {data:memberRows,error:memberError}=await cloudClient.from('clan_members').select('*').eq('clan_id',CLOUD_CLAN_ID);
-    if(memberError)throw memberError;
-    const loginMemberRaw=(memberRows||[]).find(x=>x.nickname===nick);
-    if(!loginMemberRaw)return setLoginError('등록된 혈맹원 닉네임과 일치하지 않습니다.');
-
-    const role=loginMemberRaw.role||'일반';
-    const requiredPassword=(nick==='베키')?'5621':(['군주','관리자','수호'].includes(role)?'12161216':'1216');
-    if(pw!==requiredPassword)return setLoginError('비밀번호가 올바르지 않습니다.');
-
-    let {data:{session}}=await cloudClient.auth.getSession();
+    /*
+      중요: Supabase RLS가 적용된 환경에서는 로그인 전 익명 상태로
+      clan_members를 조회하면 빈 결과가 올 수 있습니다.
+      따라서 먼저 익명 인증 세션을 확보한 뒤 최신 혈맹원 정보를 조회합니다.
+    */
+    let {data:{session},error:sessionError}=await cloudClient.auth.getSession();
+    if(sessionError)throw sessionError;
     if(!session){
       const r=await cloudClient.auth.signInAnonymously();
       if(r.error)throw r.error;
       session=r.data.session;
     }
     cloudUser=session.user;
+
+    const {data:memberRows,error:memberError}=await cloudClient
+      .from('clan_members')
+      .select('*')
+      .eq('clan_id',CLOUD_CLAN_ID);
+    if(memberError)throw memberError;
+
+    const loginMemberRaw=(memberRows||[]).find(x=>String(x.nickname||'').trim()===nick);
+    if(!loginMemberRaw)return setLoginError('등록된 혈맹원 닉네임과 일치하지 않습니다.');
+
+    const role=String(loginMemberRaw.role||'일반').trim();
+    const requiredPassword=(nick==='베키')?'5621':(['군주','관리자','수호'].includes(role)?'12161216':'1216');
+    if(pw!==requiredPassword)return setLoginError('비밀번호가 올바르지 않습니다.');
+
     await cloudLoad();
-    if(!members.some(m=>m[0]===nick))throw new Error('등록된 혈맹원 닉네임과 일치하지 않습니다.');
+    if(!members.some(m=>String(m[0]||'').trim()===nick)){
+      throw new Error('등록된 혈맹원 닉네임과 일치하지 않습니다.');
+    }
 
     localStorage.setItem(LOGIN_KEY,JSON.stringify({nickname:nick,at:Date.now()}));
     localStorage.setItem('clanNick',nick);
