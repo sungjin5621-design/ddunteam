@@ -2041,9 +2041,9 @@ window.updateParticipantSummary=function(){
     openModal(`<div class="modal-head"><h3>웨폰 선택</h3><button class="close" onclick="restoreBulkMemberModal()">×</button></div><div class="weapon-grid">${weaponNames.map(w=>`<button type="button" class="weapon-choice ${w===current?'active':''}" onclick="selectBulkWeapon('${escapeHtml(w)}')">${escapeHtml(w)}</button>`).join('')}</div>`);
   };
   window.restoreBulkMemberModal=function(){
-    const draft=bulkDraft || [{nickname:'',level:'90',weapon:'모름',role:'일반'}];
+    const draft=bulkDraft ? bulkDraft.map(x=>({...x})) : [{nickname:'',level:'90',weapon:'모름',role:'일반'}];
     const idx=Number.isInteger(window.bulkWeaponIndex)?window.bulkWeaponIndex:-1;
-    if(idx>=0 && draft[idx]) draft[idx].weapon=draft[idx].weapon || '모름';
+    if(idx>=0 && draft[idx] && !draft[idx].weapon) draft[idx].weapon='모름';
     const modalEl=document.getElementById('modal');
     if(!modalEl) return;
     modalEl.className='modal wide';
@@ -2058,7 +2058,7 @@ window.updateParticipantSummary=function(){
   };
   window.selectBulkWeapon=function(w){
     const idx=Number.isInteger(window.bulkWeaponIndex)?window.bulkWeaponIndex:-1;
-    const draft=captureBulkDraft();
+    const draft=bulkDraft ? bulkDraft.map(x=>({...x})) : captureBulkDraft();
     if(idx>=0 && draft[idx]) draft[idx].weapon=w;
     bulkDraft=draft;
     restoreBulkMemberModal();
@@ -2080,6 +2080,51 @@ window.updateParticipantSummary=function(){
     renderAll();
     closeModal();
     toast(payloads.length+'명의 혈맹원을 추가했습니다.');
+  };
+})();
+</script>
+
+<!-- v36.36: reliable member ordering using persisted rank store -->
+<script>
+(function(){
+  function getPersistedRanks(){
+    try{return JSON.parse(localStorage.getItem('ddunteam.memberRanks.v35')||'{}')||{};}catch(e){return {};}
+  }
+  window.renderMembers=function(){
+    const q=(document.getElementById('memberSearch')?.value||'').trim().toLowerCase();
+    const el=document.getElementById('members');
+    if(!el||!Array.isArray(members))return;
+    const ranks=getPersistedRanks();
+    const rankOrder={'페이지 소유자':0,'군주':1,'관리자':2,'수호':3,'일반':4};
+    const rows=members.map((m,i)=>{
+      const role=String(m[0]||'')==='베키'?'페이지 소유자':String(m[3]||'일반');
+      const raw=ranks[String(m[0]||'')];
+      const rankVal=(raw!==undefined&&raw!==null&&String(raw).trim()!=='')?Number(raw):null;
+      return {m,i,role,roleOrder:rankOrder[role]??4,level:Number(m[1])||0,rankVal};
+    }).filter(x=>String(x.m[0]||'').toLowerCase().includes(q));
+    rows.sort((a,b)=>{
+      if(a.roleOrder!==b.roleOrder)return a.roleOrder-b.roleOrder;
+      if(a.level!==b.level)return b.level-a.level;
+      if(a.rankVal!==null&&b.rankVal!==null&&a.rankVal!==b.rankVal)return a.rankVal-b.rankVal;
+      if(a.rankVal!==null&&b.rankVal===null)return -1;
+      if(a.rankVal===null&&b.rankVal!==null)return 1;
+      return String(a.m[0]||'').localeCompare(String(b.m[0]||''),'ko');
+    });
+    el.innerHTML='';
+    rows.forEach(x=>{
+      const m=x.m,i=x.i,selected=selectedMember===i;
+      const d=document.createElement('div');
+      d.className='member'+(selected?' active selected':'');
+      d.dataset.memberIndex=String(i);
+      d.onclick=e=>{if(e.target.closest('button'))return;e.preventDefault();e.stopPropagation();toggleMemberSelection(i)};
+      const cls=x.role==='페이지 소유자'?'rank-owner':x.role==='군주'?'rank-lord':x.role==='관리자'?'rank-admin':x.role==='수호'?'rank-guard':'rank-normal';
+      const canEdit=typeof canClanManage==='function'&&canClanManage();
+      const actions=canEdit?'<button class="mini" onclick="event.stopPropagation();openMemberModal('+i+')">수정</button><button class="mini" title="운영진 특이사항 보기" onclick="event.stopPropagation();openMemberNoteViewer('+i+')">🔍</button>':'';
+      const removeBtn=selected&&canEdit&&m[0]!=='베키'?'<button class="mini danger member-remove" title="혈맹원 제거" onclick="event.stopPropagation();removeSelected('+i+')">×</button>':'';
+      d.innerHTML='<div class="avatar">'+escapeHtml(String(m[0]||'')[0]||'?')+'</div><div class="mtext"><div class="mname">'+escapeHtml(m[0])+' <span class="rank '+cls+'">'+escapeHtml(x.role)+'</span></div><div class="sub">Lv.'+(m[1]??'')+' · '+escapeHtml(m[2]||'모름')+'</div></div><div class="member-actions">'+actions+removeBtn+'</div>';
+      el.appendChild(d);
+    });
+    const count=document.getElementById('memberCount');if(count)count.textContent=members.length+'명';
   };
 })();
 </script>
