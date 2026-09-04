@@ -1022,6 +1022,38 @@ window.updateParticipantSummary=function(){
   window.renderAll=function(){if(typeof prevRenderAll==='function')prevRenderAll();window.renderMembers();if(typeof renderPageIfActive==='function')renderPageIfActive();};
 })();
 </script>
+
+<script id="v3640-final-member-page-fix">
+(function(){
+  // Final safe renderer: never depend on non-global LS/load variables.
+  const safeLoad=(key, fallback={})=>{try{const v=JSON.parse(localStorage.getItem(key)||'null');return v??fallback}catch(e){return fallback}};
+  const rankKey='ddunteam.memberRanks.v35';
+  const getRankMap=()=>safeLoad(rankKey,{});
+  const roleOrder={'페이지 소유자':0,'군주':1,'관리자':2,'수호':3,'일반':4};
+  const roleOf=m=>String(m?.[0]||'')==='베키'?'페이지 소유자':String(m?.[3]||'일반');
+  const ordered=(list)=>{
+    const ranks=getRankMap();
+    return [...list].sort((a,b)=>{
+      const ro=(roleOrder[roleOf(a)]??4)-(roleOrder[roleOf(b)]??4);
+      if(ro)return ro;
+      const lv=(Number(b?.[1])||0)-(Number(a?.[1])||0);
+      if(lv)return lv;
+      const ar=(ranks[String(a?.[0]||'')]??'')===''?Infinity:Number(ranks[String(a?.[0]||'')]);
+      const br=(ranks[String(b?.[0]||'')]??'')===''?Infinity:Number(ranks[String(b?.[0]||'')]);
+      if(ar!==br)return ar-br;
+      return String(a?.[0]||'').localeCompare(String(b?.[0]||''),'ko-KR');
+    });
+  };
+  window.getOrderedMembers=ordered;
+  window.renderMembersPage=function(){
+    const extra=document.getElementById('extraPage');
+    if(!extra)return;
+    const info=safeLoad('ddunteam.memberInfo.v35',{});
+    const rows=ordered((Array.isArray(window.members)?window.members:[]).filter(m=>Number(m?.[1])!==100));
+    extra.innerHTML=`<div class="card data-page"><div class="head"><div><div class="title">♙ 인원 관리</div><div class="admin-sub">혈맹원 정보를 자동으로 불러오고 운영 정보를 직접 관리합니다.</div></div><button class="ghost" onclick="saveMemberManagement()">저장</button></div><div class="member-management-table"><div class="mm-head"><span>No.</span><span>닉네임</span><span>레벨</span><span>같이 하는 분</span><span>스펙 정보</span><span>클래스</span><span>비고</span></div>${rows.map((m,i)=>{const key=String(m[0]||''),x=info[key]||{};return `<div class="mm-row"><span>${i+1}</span><b>${escapeHtml(key)}</b><span>Lv.${escapeHtml(m[1])}</span><input data-mm="${escapeHtml(key)}" data-field="together" value="${escapeHtml(x.together||'')}"><input data-mm="${escapeHtml(key)}" data-field="spec" value="${escapeHtml(x.spec||'')}"><span>${escapeHtml(m[2]||'모름')}</span><input data-mm="${escapeHtml(key)}" data-field="memo" value="${escapeHtml(x.memo||'')}"></div>`}).join('')}</div></div>`;
+  };
+})();
+</script>
 </body>
 </html>
 
