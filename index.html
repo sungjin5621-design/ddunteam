@@ -51,6 +51,21 @@
 @media(max-width:760px){.participant-picker.open{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 @media(max-width:520px){.participant-picker.open{grid-template-columns:1fr!important}}
 </style>
+
+<style id="schedule-participant-clean-ui">
+/* 참여 인원 선택 UI: 3열 카드형으로 단순/정렬 */
+.participant-picker.open{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important;padding:4px!important;max-height:420px!important;overflow-y:auto!important;overflow-x:hidden!important;background:transparent!important;border:0!important}
+.participant-row{box-sizing:border-box!important;display:flex!important;align-items:center!important;gap:16px!important;min-height:62px!important;padding:0 18px!important;border:1px solid #263342!important;border-radius:12px!important;background:#0d141d!important;cursor:pointer!important}
+.participant-row:hover{background:#131d28!important;border-color:#3b4d61!important}
+.participant-row input{appearance:none!important;-webkit-appearance:none!important;width:28px!important;height:28px!important;min-width:28px!important;margin:0!important;border:2px solid #b9c0c8!important;border-radius:2px!important;background:#fff!important;accent-color:#6e9fe0!important;cursor:pointer!important}
+.participant-row input:checked{background:#6e9fe0!important;border-color:#6e9fe0!important;box-shadow:inset 0 0 0 6px #fff!important}
+.participant-row:has(input:checked){background:#14263a!important;border-color:#4e7ca8!important;box-shadow:inset 0 0 0 1px #315a7e!important}
+.participant-row span{font-size:16px!important;font-weight:800!important;color:#e6ebf2!important;line-height:1.2!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.picker-title{font-size:14px!important;font-weight:800!important;color:#b8c4d3!important}
+.selected-summary{min-height:42px!important;font-size:13px!important}
+@media(max-width:900px){.participant-picker.open{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:560px){.participant-picker.open{grid-template-columns:1fr!important}.participant-row{min-height:56px!important}}
+</style>
 </head>
 <body>
 <div id="loginGate" class="login-gate">
@@ -479,7 +494,21 @@ function restoreBulkMemberModal(){if(!window.bulkParentModal)return closeModal()
 function selectBulkWeapon(w){if(window.bulkWeaponButton){window.bulkWeaponButton.textContent=w;window.bulkWeaponButton.dataset.weapon=w}restoreBulkMemberModal()}
 document.getElementById('modalBg').addEventListener('click',function(e){if(e.target!==this)return;if(window.bulkParentModal)restoreBulkMemberModal();else closeModal()})
 async function saveBulkMembers(){if(!canClanManage())return toast('혈맹원 관리는 페이지 소유자/군주만 가능합니다.');const rows=[...document.querySelectorAll('#bulkRows .bulk-row')],payloads=[],names=new Set(members.map(m=>m[0]));for(const row of rows){const n=row.querySelector('.bulk-nick').value.trim();if(!n)continue;if(names.has(n)||payloads.some(x=>x.nickname===n))return toast('중복 닉네임이 있습니다: '+n);if(n==='베키')return toast('베키는 다중 추가로 등록할 수 없습니다.');payloads.push({clan_id:CLOUD_CLAN_ID,nickname:n,level:+row.querySelector('.bulk-level').value||0,weapon:row.querySelector('.bulk-weapon').dataset.weapon||'모름',role:row.querySelector('.bulk-role').value})}if(!payloads.length)return toast('추가할 혈맹원을 입력해주세요.');const {error}=await cloudClient.from('clan_members').insert(payloads);if(error)return cloudErr(error);await cloudRefresh();closeModal();toast(payloads.length+'명의 혈맹원을 추가했습니다.')}
-async function removeSelected(i){if(!canClanManage())return toast('혈맹원 관리는 페이지 소유자/군주만 가능합니다.');if(i===undefined||!members[i])return toast('제거할 혈맹원을 선택해주세요.');const target=members[i];if(target[0]==='베키')return toast('페이지 소유자는 제거할 수 없습니다.');if(!confirm(target[0]+'님을 제거할까요?'))return;const id=target[4];if(!id)return toast('선택된 혈맹원의 ID를 확인할 수 없습니다.');const {error}=await cloudClient.from('clan_members').delete().eq('id',id);if(error)return cloudErr(error);await cloudLoad();selectedMember=null;selectedMemberIds.clear();renderAll();toast(target[0]+'님을 제거했습니다.')} async function saveMemberNote(i){
+async function removeSelected(i){
+  if(!canClanManage())return toast('혈맹원 관리는 페이지 소유자/군주/관리자만 가능합니다.');
+  if(i===undefined||!members[i])return toast('제거할 혈맹원을 선택해주세요.');
+  const target=members[i];
+  if(target[0]==='베키')return toast('페이지 소유자는 제거할 수 없습니다.');
+  if(!confirm(target[0]+'님을 제거할까요?'))return;
+  const id=target[4];
+  if(!id)return toast('선택된 혈맹원의 ID를 확인할 수 없습니다.');
+  const {data:deleted,error}=await cloudClient.from('clan_members').delete().eq('id',id).select('id');
+  if(error)return cloudErr(error);
+  if(!deleted||deleted.length!==1)return toast('혈맹원 삭제 권한이 없거나 삭제된 데이터가 없습니다. Supabase DELETE 권한을 확인해주세요.');
+  await cloudLoad();
+  if(members.some(m=>String(m[4])===String(id)))return toast('삭제 요청은 처리됐지만 최신 혈맹원 목록에 아직 남아 있습니다. Supabase 데이터를 확인해주세요.');
+  selectedMember=null;selectedMemberIds.clear();renderAll();toast(target[0]+'님을 제거했습니다.');
+} async function saveMemberNote(i){
   if(!canManage())return toast('특이사항은 페이지 소유자/군주/수호만 관리할 수 있습니다.');
   const note=document.getElementById('memberNote').value.trim();
   const {error}=await cloudClient.from('clan_members').update({notes:note}).eq('id',members[i][4]);if(error)return cloudErr(error);
@@ -926,7 +955,7 @@ window.openScheduleEditor=function(id,date,hour){
   const s=id===null?{id:null,date:date||todayStr(),start:hour??21,end:(hour??21)+1,title:'',participants:[]}:schedules.find(x=>x.id===id);
   if(!s)return toast('일정을 찾을 수 없습니다.');
   const p=scheduleParticipants(s);
-  const participantHtml=members.map(m=>{
+  const participantHtml=[...new Map(members.map(m=>[String(m[0]),m])).values()].map(m=>{
     const nick=String(m[0]);
     return `<label class="participant-row"><input type="checkbox" value="${escapeHtml(nick)}" ${p.includes(nick)?'checked':''} onchange="updateParticipantSummary()"><span>${escapeHtml(nick)}</span></label>`;
   }).join('');
