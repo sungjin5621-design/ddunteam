@@ -28,6 +28,8 @@
 .order-name{font-weight:800}.order-fixed{font-size:10px;color:#ff9a61}
 .order-input{width:100%;padding:8px;background:#080d13;color:#fff;border:1px solid #2d3947;border-radius:7px;text-align:center}
 .order-help{color:#7f8c9f;font-size:11px;margin-bottom:10px}
+
+.mini-games{min-height:760px}.mini-game-grid,.sim-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:18px}.mini-game-card{min-height:150px;border:1px solid var(--border,#263244);border-radius:16px;background:linear-gradient(145deg,#111a28,#0b111c);color:#eef4ff;padding:24px;text-align:left;cursor:pointer;display:flex;flex-direction:column;gap:8px}.mini-game-card:hover{border-color:#5aa9ff;transform:translateY(-1px)}.mini-game-card span{font-size:32px}.mini-game-card b{font-size:19px}.mini-game-card small{color:#8e9bae;line-height:1.5}.mini-toolbar{display:flex;align-items:center;gap:10px;margin:16px 0}.mini-count{margin-left:auto;font-weight:700}.mini-player-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;max-height:420px;overflow:auto;padding:4px}.mini-player{display:flex;align-items:center;gap:8px;padding:11px 12px;border:1px solid #263244;border-radius:10px;background:#0d1521}.mini-custom{display:flex;gap:8px;margin-top:14px}.mini-custom input,.sim-form input{flex:1;min-width:0;background:#0b111c;border:1px solid #2a374a;color:#fff;border-radius:9px;padding:11px}.mini-result{margin-top:18px;padding:16px;border:1px solid #263244;border-radius:12px;background:#0b111c;line-height:1.7}.mini-result h4{margin:0 0 10px}.mini-result-row{display:grid;grid-template-columns:70px 1fr 100px;gap:8px;padding:9px 0;border-bottom:1px solid #1e2a39}.mini-result-row:last-child{border-bottom:0}.sim-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:18px}.sim-form label{display:flex;flex-direction:column;gap:7px;color:#9aa7b8;font-size:13px}.sim-form input{width:100%;box-sizing:border-box;color:#fff}.mini-player input{accent-color:#5aa9ff}@media(max-width:800px){.mini-game-grid,.sim-grid,.sim-form{grid-template-columns:1fr}.mini-player-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
 </head>
 <body>
@@ -94,7 +96,8 @@ const defaultCategories=[
   {id:"memo",label:"▤ 뚠뚠 메모장",order:3,visible:true},
   {id:"inventory",label:"⬟ 보유 혈맹 리스트",order:4,visible:true},
   {id:"items",label:"◆ 아이템 분배 관리",order:5,visible:true},
-  {id:"misc",label:"◆ 잡지식",order:6,visible:true},
+  {id:"minigame",label:"🎮 미니 게임",order:6,visible:true},
+  {id:"misc",label:"◆ 잡지식",order:7,visible:true},
   {id:"enemy",label:"☷ 적 리스트",order:7,visible:true}
 ];
 let categories=defaultCategories.map(x=>({...x}));
@@ -204,12 +207,24 @@ function renderToday(){const list=schedules.filter(s=>s.date===todayStr()).sort(
 
 function renderCalendar(){const now=new Date(),y=now.getFullYear(),m=now.getMonth(),first=new Date(y,m,1),last=new Date(y,m+1,0),el=document.getElementById("calendar");el.innerHTML="";for(let i=0;i<first.getDay();i++)el.innerHTML+='<div class="day muted"></div>';for(let d=1;d<=last.getDate();d++){const date=new Date(y,m,d),ds=y+"-"+String(m+1).padStart(2,"0")+"-"+String(d).padStart(2,"0"),hn=koreanHolidays[ds]||"";el.innerHTML+='<div class="day '+dayClass(ds,date)+'"><div>'+d+'</div>'+(hn?'<div style="font-size:9px;margin-top:2px">'+hn+'</div>':"")+'</div>'}}function renderLegend(){const counts={};members.forEach(m=>counts[m[2]]=(counts[m[2]]||0)+1);const total=members.length||1;const donut=document.querySelector(".donut");if(donut)donut.setAttribute("data-total","총 "+members.length+"명");document.getElementById("legend").innerHTML=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([w,c])=>`<div class="legend-item" data-weapon="${escapeHtml(w)}" onclick="openWeaponMembers(this.dataset.weapon)"><b>${escapeHtml(w)}</b><span class="legend-count">${c}명 · ${(c/total*100).toFixed(1)}%</span></div>`).join("")}
 function openWeaponMembers(weapon){const list=members.filter(m=>m[2]===weapon);const rows=list.length?list.map(m=>'<div style="display:flex;justify-content:space-between;padding:11px;border-bottom:1px solid #25303b"><b>'+escapeHtml(m[0])+'</b><span class="sub">Lv.'+m[1]+' · '+escapeHtml(m[3])+'</span></div>').join(''):'<div class="empty">해당 혈맹원이 없습니다.</div>';openModal('<div class="modal-head"><div><h3>'+escapeHtml(weapon)+' 혈맹원</h3><div class="admin-sub">현재 혈맹원 중 해당 웨폰을 사용하는 인원</div></div><button class="close" onclick="closeModal()">×</button></div><div class="rank-table">'+rows+'</div>')}
+let __renderAllBusy=false;
 function renderAll(){
+  if(__renderAllBusy)return;
+  __renderAllBusy=true;
   try{
-    renderTabs("main");renderCurrent();const cm=document.getElementById("clanMessage");if(cm)cm.textContent=localStorage.getItem("clanMessage")||"베키는 짱이다";renderMembers();renderNotices();renderToday();renderCalendar();renderLegend();document.getElementById("kpiMembers").textContent=members.length+" / 50";document.getElementById("kpiLevel").textContent=(members.length?members.reduce((a,m)=>a+(+m[1]||0),0)/members.length:0).toFixed(1);document.getElementById("serverName").textContent=currentServer;
-  }catch(e){
-    console.error(e);
-    toast("화면 데이터를 불러오는 중 오류가 발생했습니다.");
+    try{renderTabs("main")}catch(e){console.error("renderTabs:",e)}
+    try{renderCurrent()}catch(e){console.error("renderCurrent:",e)}
+    try{const cm=document.getElementById("clanMessage");if(cm)cm.textContent=localStorage.getItem("clanMessage")||"베키는 짱이다"}catch(e){console.error("clanMessage:",e)}
+    try{renderMembers()}catch(e){console.error("renderMembers:",e)}
+    try{renderNotices()}catch(e){console.error("renderNotices:",e)}
+    try{renderToday()}catch(e){console.error("renderToday:",e)}
+    try{renderCalendar()}catch(e){console.error("renderCalendar:",e)}
+    try{renderLegend()}catch(e){console.error("renderLegend:",e)}
+    try{document.getElementById("kpiMembers").textContent=members.length+" / 50"}catch(e){}
+    try{document.getElementById("kpiLevel").textContent=(members.length?members.reduce((a,m)=>a+(+m[1]||0),0)/members.length:0).toFixed(1)}catch(e){}
+    try{document.getElementById("serverName").textContent=currentServer}catch(e){}
+  }finally{
+    __renderAllBusy=false;
   }
 }
 function openModal(content,cls=""){document.getElementById("modal").className="modal "+cls;document.getElementById("modal").innerHTML=content;document.getElementById("modalBg").style.display="flex"}
@@ -269,6 +284,7 @@ function showPage(page,btn){
   if(page==="calendar"){if(typeof cloudReady!=="undefined"&&cloudReady)cloudLoad().then(()=>{renderPageCalendar();}).catch(cloudErr);extra.innerHTML='<div class="card calendar-card" style="min-height:760px"><div class="head"><div class="title">▣ 공유 캘린더</div><button class="ghost" onclick="openCalendarDetail()">자세히 보기</button></div><div class="cal-head"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div><div id="pageCalendar" class="cal-grid"></div></div>';renderPageCalendar();}
   else if(page==="schedule"){extra.innerHTML='<div class="card" style="min-height:760px"><div class="head"><div class="title">⚔ 리니지 일정표</div><button class="ghost" onclick="openSchedule()">주간 일정 관리</button></div><div class="permission">페이지 소유자 / 군주 / 수호는 전체 일정에서 1시간 단위로 일정을 추가·수정·삭제할 수 있습니다.</div></div>';}
   else if(page==="members"){extra.innerHTML='<div class="card" style="min-height:760px"><div class="head"><div class="title">♙ 인원 관리</div></div><div class="permission">좌측 혈맹원 목록에서 인원을 선택해 프로필과 운영진 특이사항을 관리할 수 있습니다.</div></div>';}
+  else if(page==="minigame"){renderMiniGamesPage();}
   else {extra.innerHTML='<div class="card" style="min-height:760px"><div class="head"><div class="title">'+escapeHtml(btn.textContent)+'</div></div><p style="color:#8592a5">해당 메뉴의 세부 기능을 연결할 수 있는 영역입니다.</p></div>';}
 }
 function renderPageCalendar(){
@@ -316,15 +332,39 @@ async function loginDdu(){
   const btn=document.getElementById('loginSubmit');btn.disabled=true;setLoginError('접속 확인 중...');
   try{
     let {data:{session}}=await cloudClient.auth.getSession();
-    if(!session){const r=await cloudClient.auth.signInAnonymously();if(r.error)throw r.error;session=r.data.session;}
-    cloudUser=session.user;await cloudLoad();
+    if(!session){
+      const r=await cloudClient.auth.signInAnonymously();
+      if(r.error)throw r.error;
+      session=r.data.session;
+    }
+    cloudUser=session.user;
+    await cloudLoad();
     if(!members.some(m=>m[0]===nick))throw new Error('등록된 혈맹원 닉네임과 일치하지 않습니다.');
-    localStorage.setItem(LOGIN_KEY,JSON.stringify({nickname:nick,at:Date.now()}));currentNick=nick;cloudReady=true;refreshOwnerControls();
-    const ownerBtn=document.getElementById('ownerClaimBtn');if(ownerBtn)ownerBtn.style.display=cloudOwnerId?'none':'inline-grid';
-    const adminBtn=document.getElementById('adminBtn');if(adminBtn)adminBtn.style.display=isPageOwner()?'inline-block':'none';
-    const logoutBtn=document.getElementById('logoutBtn');if(logoutBtn)logoutBtn.style.display='inline-grid';
-    showApp();cloudSubscribe();renderAll();setLoginError('');document.getElementById('loginPw').value='';
-  }catch(e){console.error(e);setLoginError(e?.message||'로그인에 실패했습니다.');}finally{btn.disabled=false;}
+
+    localStorage.setItem(LOGIN_KEY,JSON.stringify({nickname:nick,at:Date.now()}));
+    currentNick=nick;
+    cloudReady=true;
+
+    // 인증 성공과 화면 렌더링을 분리합니다. 화면의 특정 위젯 오류가
+    // 로그인 자체를 실패로 보이게 만들지 않도록 합니다.
+    try{
+      refreshOwnerControls();
+      const ownerBtn=document.getElementById('ownerClaimBtn');if(ownerBtn)ownerBtn.style.display=cloudOwnerId?'none':'inline-grid';
+      const adminBtn=document.getElementById('adminBtn');if(adminBtn)adminBtn.style.display=isPageOwner()?'inline-block':'none';
+      const logoutBtn=document.getElementById('logoutBtn');if(logoutBtn)logoutBtn.style.display='inline-grid';
+    }catch(uiSetupErr){console.error('UI setup error after login:',uiSetupErr);}
+
+    showApp();
+    try{cloudSubscribe();}catch(subErr){console.error('Realtime subscribe error:',subErr);}
+    try{renderAll();}catch(renderErr){console.error('Initial render error after login:',renderErr);}
+    setLoginError('');
+    document.getElementById('loginPw').value='';
+  }catch(e){
+    console.error('Login error:',e);
+    setLoginError(e?.message||'로그인에 실패했습니다.');
+  }finally{
+    btn.disabled=false;
+  }
 }
 async function logoutDdu(){localStorage.removeItem(LOGIN_KEY);if(cloudClient)await cloudClient.auth.signOut();location.reload();}
 async function cloudInit(){
@@ -357,6 +397,12 @@ async function cloudLoad(){
   schedules=s.data.map(x=>({id:x.id,date:x.event_date,start:x.start_hour,end:x.end_hour,title:x.title,count:x.count_text}));
   const savedMenuAccess=JSON.parse(localStorage.getItem("clanMenuAccess")||"{}");
   categories=k.data.map(x=>{const def=defaultCategories.find(d=>d.id===x.category_key)||{};return {id:x.category_key,label:x.label,order:x.order_value,fixed:x.fixed,visible:def.visible!==false,allowedRoles:savedMenuAccess[x.category_key]||["군주","관리자","수호","일반"]};});
+  // DB에 아직 저장되지 않은 신규 기본 메뉴도 상단 메뉴에 항상 추가
+  defaultCategories.filter(def=>!categories.some(c=>c.id===def.id)).forEach(def=>{
+    categories.push({...def,allowedRoles:savedMenuAccess[def.id]||["군주","관리자","수호","일반"]});
+  });
+  // 신규 메뉴의 순서가 기존 메뉴와 겹치지 않도록 정렬 기준을 보정
+  categories.filter(c=>!c.fixed).sort((a,b)=>a.order-b.order||a.label.localeCompare(b.label,'ko')).forEach((c,i)=>c.order=i+1);
   const saved=JSON.parse(localStorage.getItem(LOGIN_KEY)||'null');
   const savedMember=saved?.nickname?members.find(x=>x[0]===saved.nickname):null;
   const mine=members.find(x=>x[6]===cloudUser.id);
@@ -555,10 +601,62 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
   window.openCalendarDetail=async function(y=new Date().getFullYear(),m=new Date().getMonth()){if(typeof cloudReady!=='undefined'&&cloudReady){try{await cloudLoad()}catch(e){cloudErr(e)}}renderCalendarDetail(y,m)};
   window.renderCalendar=function(){const el=document.getElementById('calendar');if(!el)return;const now=new Date(),y=now.getFullYear(),m=now.getMonth(),first=new Date(y,m,1),last=new Date(y,m+1,0);el.innerHTML='';for(let i=0;i<first.getDay();i++)el.innerHTML+='<div class="day muted"></div>';for(let d=1;d<=last.getDate();d++){const ds=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'),date=new Date(y,m,d),its=schedules.filter(s=>s.date===ds).sort((a,b)=>a.start-b.start);el.innerHTML+=`<div class="day ${dayClass(ds,date)}" onclick="${canManage()?'openScheduleEditor(null,\''+ds+'\',21)':''}"><div>${d}</div>${koreanHolidays[ds]?`<div class="holiday-name">${koreanHolidays[ds]}</div>`:''}${its.slice(0,2).map(s=>`<div class="mini-cal-event" onclick="event.stopPropagation();openScheduleEditor(${s.id})">${String(s.start).padStart(2,'0')}:00 ${escapeHtml(s.title)}</div>`).join('')}</div>`}};
 
+  /* Mini games: local, lightweight entertainment tools. */
+  let miniGameState={game:null,players:[],result:null};
+  function miniEligibleMembers(){return members.filter(m=>String(m[1])!=='100').sort((a,b)=>String(a[0]).localeCompare(String(b[0]),'ko'));}
+  function renderMiniGamesPage(){
+    const extra=document.getElementById('extraPage'); if(!extra)return;
+    if(!miniGameState.game){
+      extra.innerHTML=`<div class="card data-page mini-games"><div class="head"><div><div class="title">🎮 미니 게임</div><div class="admin-sub">혈맹원들과 가볍게 즐길 수 있는 랜덤 게임과 시뮬레이션입니다.</div></div></div><div class="mini-game-grid">
+        <button class="mini-game-card" onclick="openMiniGame('pinball')"><span>🎱</span><b>핀볼</b><small>여러 명의 이름을 넣고 랜덤 결과를 뽑아요.</small></button>
+        <button class="mini-game-card" onclick="openMiniGame('race')"><span>🏎️</span><b>경주</b><small>최대 6명이 달려서 순위를 정해요.</small></button>
+        <button class="mini-game-card" onclick="openMiniGame('ladder')"><span>🪜</span><b>사다리타기</b><small>참여자와 결과를 랜덤으로 연결해요.</small></button>
+        <button class="mini-game-card" onclick="openMiniGame('sim')"><span>🎰</span><b>시뮬레이션</b><small>강화·뽑기·주사위 같은 확률 게임을 즐겨요.</small></button>
+      </div></div>`; return;
+    }
+    const game=miniGameState.game;
+    if(game==='sim'){renderSimulationHub();return;}
+    const max=game==='race'?6:12;
+    const preset=miniGameState.players;
+    extra.innerHTML=`<div class="card data-page mini-games"><div class="head"><div><div class="title">${game==='pinball'?'🎱 핀볼':game==='race'?'🏎️ 경주':'🪜 사다리타기'}</div><div class="admin-sub">참여자를 선택한 뒤 게임을 시작하세요. ${game==='race'?'최대 6명':''}</div></div><button class="ghost" onclick="backToMiniGames()">← 게임 선택</button></div>
+      <div class="mini-toolbar"><button class="ghost" onclick="selectAllMiniPlayers(${max})">혈맹원에서 자동 선택</button><button class="ghost" onclick="clearMiniPlayers()">초기화</button><span class="mini-count">${preset.length}/${max}명</span></div>
+      <div class="mini-player-grid">${miniEligibleMembers().map(m=>{const checked=preset.includes(m[0]);return `<label class="mini-player"><input type="checkbox" value="${escapeHtml(m[0])}" ${checked?'checked':''} onchange="syncMiniPlayers(${max})"><span>${escapeHtml(m[0])}</span></label>`}).join('')}</div>
+      <div class="mini-custom"><input id="miniCustomName" placeholder="직접 이름 추가"><button class="primary" onclick="addMiniCustom(${max})">추가</button></div>
+      ${miniGameState.result?`<div class="mini-result">${miniGameState.result}</div>`:''}
+      <div class="modal-actions"><button class="primary" onclick="startMiniGame()">게임 시작</button></div></div>`;
+  }
+  function openMiniGame(game){miniGameState={game,players:[],result:null};renderMiniGamesPage();}
+  function backToMiniGames(){miniGameState={game:null,players:[],result:null};renderMiniGamesPage();}
+  function syncMiniPlayers(max){miniGameState.players=[...document.querySelectorAll('.mini-player-grid input:checked')].map(x=>x.value).slice(0,max);renderMiniGamesPage();}
+  function selectAllMiniPlayers(max){miniGameState.players=miniEligibleMembers().slice(0,max).map(m=>m[0]);renderMiniGamesPage();}
+  function clearMiniPlayers(){miniGameState.players=[];renderMiniGamesPage();}
+  function addMiniCustom(max){const e=document.getElementById('miniCustomName'),n=e?.value.trim();if(!n)return toast('이름을 입력해주세요.');if(miniGameState.players.length>=max)return toast('참여 인원이 가득 찼습니다.');if(miniGameState.players.includes(n))return toast('이미 참가한 이름입니다.');miniGameState.players.push(n);renderMiniGamesPage();}
+  function startMiniGame(){const p=miniGameState.players;if(p.length<2)return toast('2명 이상 선택해주세요.');if(miniGameState.game==='pinball'){const scores=p.map(n=>({n,s:Math.floor(Math.random()*1001)})).sort((a,b)=>b.s-a.s);miniGameState.result='<h4>핀볼 결과</h4>'+scores.map((x,i)=>`<div class="mini-result-row"><b>${i+1}위</b><span>${escapeHtml(x.n)}</span><strong>${x.s}점</strong></div>`).join('');}
+    else if(miniGameState.game==='race'){const arr=p.map(n=>({n,t:Math.random()*4+1})).sort((a,b)=>a.t-b.t);miniGameState.result='<h4>경주 결과</h4>'+arr.map((x,i)=>`<div class="mini-result-row"><b>${i+1}위</b><span>🏎️ ${escapeHtml(x.n)}</span><strong>${x.t.toFixed(2)}초</strong></div>`).join('');}
+    else {const shuffled=[...p].sort(()=>Math.random()-.5);miniGameState.result='<h4>사다리 결과</h4>'+p.map((n,i)=>`<div class="mini-result-row"><b>${escapeHtml(n)}</b><span>→</span><strong>${escapeHtml(shuffled[i])}</strong></div>`).join('');}
+    renderMiniGamesPage();
+  }
+  function renderSimulationHub(){
+    const extra=document.getElementById('extraPage');extra.innerHTML=`<div class="card data-page mini-games"><div class="head"><div><div class="title">🎰 시뮬레이션</div><div class="admin-sub">강화와 뽑기부터 간단한 확률 게임까지 자유롭게 테스트하세요.</div></div><button class="ghost" onclick="backToMiniGames()">← 미니 게임</button></div><div class="sim-grid">
+      <button class="mini-game-card" onclick="openSimulation('enhance')"><span>⚔️</span><b>강화 시뮬레이션</b><small>강화 단계와 성공 확률을 직접 설정해 연속 강화합니다.</small></button>
+      <button class="mini-game-card" onclick="openSimulation('gacha')"><span>🎁</span><b>뽑기 시뮬레이션</b><small>확률을 설정하고 1회·10회·100회 결과를 집계합니다.</small></button>
+      <button class="mini-game-card" onclick="openSimulation('dice')"><span>🎲</span><b>주사위/룰렛</b><small>랜덤 숫자와 당첨자를 간단하게 뽑습니다.</small></button>
+    </div></div>`;
+  }
+  function openSimulation(type){
+    const extra=document.getElementById('extraPage');
+    if(type==='enhance'){extra.innerHTML=`<div class="card data-page mini-games"><div class="head"><div><div class="title">⚔️ 강화 시뮬레이션</div></div><button class="ghost" onclick="renderSimulationHub()">← 시뮬레이션</button></div><div class="sim-form"><label>현재 강화 단계<input id="enhLv" type="number" min="0" max="100" value="0"></label><label>목표 단계<input id="enhTarget" type="number" min="1" max="100" value="10"></label><label>성공 확률(%)<input id="enhRate" type="number" min="0.1" max="100" step="0.1" value="50"></label></div><div class="modal-actions"><button class="primary" onclick="runEnhance()">강화 시작</button></div><div id="simResult" class="mini-result"></div></div>`;}
+    else if(type==='gacha'){extra.innerHTML=`<div class="card data-page mini-games"><div class="head"><div><div class="title">🎁 뽑기 시뮬레이션</div></div><button class="ghost" onclick="renderSimulationHub()">← 시뮬레이션</button></div><div class="sim-form"><label>대박 확률(%)<input id="gachaRate" type="number" min="0.01" max="100" step="0.01" value="1"></label><label>뽑기 횟수<input id="gachaCount" type="number" min="1" max="100000" value="100"></label></div><div class="modal-actions"><button class="primary" onclick="runGacha()">뽑기 시작</button></div><div id="simResult" class="mini-result"></div></div>`;}
+    else {extra.innerHTML=`<div class="card data-page mini-games"><div class="head"><div><div class="title">🎲 주사위 / 룰렛</div></div><button class="ghost" onclick="renderSimulationHub()">← 시뮬레이션</button></div><div class="sim-form"><label>면 수<input id="diceSides" type="number" min="2" max="1000" value="6"></label><label>던지기 횟수<input id="diceCount" type="number" min="1" max="10000" value="10"></label></div><div class="modal-actions"><button class="primary" onclick="runDice()">굴리기</button></div><div id="simResult" class="mini-result"></div></div>`;}
+  }
+  function runEnhance(){let lv=Math.max(0,+document.getElementById('enhLv').value||0),target=Math.max(lv+1,+document.getElementById('enhTarget').value||lv+1),rate=Math.min(100,Math.max(0.1,+document.getElementById('enhRate').value||50)),tries=0;while(lv<target&&tries<10000){tries++;if(Math.random()*100<rate)lv++;else break;}document.getElementById('simResult').innerHTML=`현재 단계 <b>+${lv}</b> / 목표 +${target}<br>${lv>=target?'🎉 목표 강화 성공!':'💥 강화 실패'}<br>시도 횟수: ${tries}`;}
+  function runGacha(){const rate=Math.min(100,Math.max(0.01,+document.getElementById('gachaRate').value||1)),count=Math.min(100000,Math.max(1,+document.getElementById('gachaCount').value||100));let win=0;for(let i=0;i<count;i++)if(Math.random()*100<rate)win++;const pct=win/count*100;document.getElementById('simResult').innerHTML=`총 ${count.toLocaleString()}회<br>대박 획득 <b>${win}</b>회<br>실제 결과 확률 <b>${pct.toFixed(2)}%</b>`;}
+  function runDice(){const sides=Math.min(1000,Math.max(2,+document.getElementById('diceSides').value||6)),count=Math.min(10000,Math.max(1,+document.getElementById('diceCount').value||10));const a=Array.from({length:count},()=>1+Math.floor(Math.random()*sides));document.getElementById('simResult').innerHTML=`결과: <b>${a.join(', ')}</b><br>합계 ${a.reduce((x,y)=>x+y,0)} / 평균 ${(a.reduce((x,y)=>x+y,0)/count).toFixed(2)}`;}
+
   /* Main page render: live calendar + current class distribution. */
   const oldRenderAll=window.renderAll;
   window.renderAll=function(){if(typeof oldRenderAll==='function')oldRenderAll();renderMembers();renderPageIfActive();};
-  function renderPageIfActive(){const active=document.querySelector('#tabs button.active')?.getAttribute('onclick')||'';if(active.includes("'members'"))renderMembersPage();}
+  function renderPageIfActive(){const active=document.querySelector('#tabs button.active')?.getAttribute('onclick')||'';if(active.includes("'members'"))renderMembersPage(); if(active.includes("'minigame'"))renderMiniGamesPage();}
 
   /* Member management page. */
   window.renderMembersPage=function(){
@@ -618,6 +716,7 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
     else if(page==='memo'){extra.innerHTML=renderPrivateMemo();}
     else if(page==='inventory'){extra.innerHTML=renderInventory();}
     else if(page==='items'){extra.innerHTML=renderItems();}
+    else if(page==='minigame'){renderMiniGamesV368();}
     else if(page==='misc'||page==='enemy')extra.innerHTML=`<div class="card menu-page"><div class="head"><div class="title">${escapeHtml(btn?.textContent||page)}</div></div><div class="menu-placeholder">이 메뉴의 상세 기능은 준비 중입니다.</div></div>`;
     else extra.innerHTML='<div class="card menu-page"><div class="menu-placeholder">준비 중입니다.</div></div>';
   };
@@ -638,6 +737,22 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
   .order-head{display:grid;grid-template-columns:1.5fr .7fr 2.5fr .7fr;gap:10px;align-items:center;padding:8px 10px;color:#8794a7;font-size:11px;background:#151d27;border:1px solid #25303b;border-radius:8px}.menu-perm-row{grid-template-columns:1.5fr .7fr 2.5fr .7fr!important}.role-checks{display:flex;flex-wrap:wrap;gap:7px 10px}.role-checks label{display:flex;align-items:center;gap:4px;color:#c9d1dc;font-size:10px}.role-checks input{accent-color:#6e8de6}.member-management-table{display:grid;max-height:72vh;overflow:auto}.mm-head,.mm-row{grid-template-columns:55px 1.1fr .55fr 1.2fr 1.5fr .9fr 1.1fr!important;text-align:center}.mm-head{position:sticky;top:0;z-index:5}.mm-row>*{text-align:center}.mm-row input{text-align:center}.  .head-actions{display:flex;align-items:center;gap:7px}.toggle-line{display:flex;align-items:center;gap:6px}.order-row{display:grid;grid-template-columns:1.5fr 1fr .7fr;gap:10px;align-items:center;padding:10px;border:1px solid #25303b;border-radius:8px;background:#0a1017}.order-list{display:grid;gap:8px}.data-page{min-height:760px}.member-management-table{display:grid;max-height:calc(100vh - 175px);overflow:auto;border:1px solid #293440;border-radius:10px;overflow-x:hidden}.mm-head,.mm-row{display:grid;grid-template-columns:1.1fr .55fr 1.2fr 1.5fr .9fr 1.1fr;gap:8px;align-items:center;padding:9px 10px;border-bottom:1px solid #202a34}.mm-head{background:#151d27;color:#8f9bad;font-size:11px;position:sticky;top:0;z-index:5}.mm-row input{width:100%;padding:8px;background:#090f16;color:#fff;border:1px solid #2d3947;border-radius:7px}.memo-page-grid{display:grid;grid-template-columns:1.55fr .75fr;gap:12px}.memo-summary{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:10px;padding:12px;background:#0a1017;border:1px solid #293440;border-radius:10px}.memo-summary label,.memo-summary>div{display:grid;gap:4px;color:#8491a4;font-size:11px}.memo-summary input{padding:9px;background:#090f16;color:#fff;border:1px solid #2d3947;border-radius:7px}.memo-summary b{font-size:18px;color:#f1f4f8}.memo-section{margin-top:14px}.section-title{font-weight:900;margin-bottom:8px}.allocation-list{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}.allocation-row{display:grid;grid-template-columns:1fr 110px 20px;align-items:center;gap:5px;padding:6px 8px;border:1px solid #232e39;border-radius:7px}.allocation-row input{padding:7px;background:#090f16;color:#fff;border:1px solid #2d3947;border-radius:6px}.time-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}.time-row{display:grid;grid-template-columns:1fr 1.6fr;gap:8px;align-items:center;padding:7px;border:1px solid #232e39;border-radius:7px}.time-row select,.status-actions select{padding:7px;background:#090f16;color:#fff;border:1px solid #2d3947;border-radius:6px}.memo-textarea{width:100%;min-height:160px;padding:10px;background:#090f16;color:#fff;border:1px solid #2d3947;border-radius:7px;resize:vertical}.calc-box{display:grid;gap:8px}.calc-box>div{display:flex;justify-content:space-between;padding:14px;border:1px solid #293440;border-radius:8px;background:#0a1017}.calc-box .remain{background:#14221a}.rule-box{margin-top:12px;padding:12px;border:1px solid #293440;border-radius:8px;color:#aeb8c7}.rule-box p{margin:7px 0;font-size:11px}.inventory-worlds{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin-bottom:12px}.inventory-worlds button{padding:9px}.inventory-worlds button.active{background:#173149;border-color:#4b79a4}.inventory-server-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:9px}.inventory-card{min-height:160px;padding:11px;border:1px solid #293440;border-radius:9px;background:#0a1017;display:flex;flex-direction:column;gap:5px}.inventory-card.has-data{background:#101923}.inv-server{font-weight:900;color:#aeb9c8}.inv-empty{color:#657287;margin:auto 0}.inv-actions{display:flex;gap:5px;margin-top:auto}.server-select-display{padding:9px;text-align:left}.item-table{border:1px solid #293440;border-radius:10px;overflow:hidden}.item-head,.item-row{display:grid;grid-template-columns:1.7fr .8fr 1.2fr 1fr 1fr 34px;gap:7px;align-items:center;padding:8px;border-bottom:1px solid #202a34}.item-head{background:#151d27;color:#8f9bad;font-size:11px}.item-row input,.item-row select{width:100%;padding:8px;background:#090f16;color:#fff;border:1px solid #2d3947;border-radius:7px}.letter-list{display:grid;border:1px solid #293440;border-radius:10px;overflow:hidden}.letter-row{display:grid;grid-template-columns:150px 1fr 120px 100px;gap:10px;align-items:center;padding:13px;border-bottom:1px solid #202a34;cursor:pointer}.letter-row:hover{background:#111923}.status{font-size:10px;padding:4px 7px;border-radius:5px;background:#293440}.status-진행중{background:#173442;color:#72cfff}.status-완료{background:#173b29;color:#62df91}.anon{margin-left:5px;font-size:10px;color:#c8a8ff}.pagination{display:flex;justify-content:center;gap:5px;margin-top:14px}.pagination button.active{background:#173149;border-color:#4b79a4}.letter-detail{display:grid;gap:14px}.letter-body{white-space:pre-wrap;line-height:1.8;padding:13px;border:1px solid #293440;border-radius:8px;background:#0a1017}.status-actions{display:flex;justify-content:flex-end;gap:7px}.comments{display:grid;gap:7px}.comment{display:grid;grid-template-columns:100px 1fr;gap:8px;padding:8px;border-bottom:1px solid #202a34}.comment-input{display:flex;gap:6px}.comment-input input{flex:1;padding:9px;background:#090f16;color:#fff;border:1px solid #2d3947;border-radius:7px}.month-calendar{display:grid;grid-template-columns:repeat(7,1fr);border-left:1px solid #293440;border-top:1px solid #293440}.month-cell{min-height:125px;border-right:1px solid #293440;border-bottom:1px solid #293440;padding:8px;background:#0d131b;cursor:pointer}.month-cell.today{background:#17120f;box-shadow:inset 0 0 0 1px var(--orange)}.month-cell.holiday{color:#ef6969}.month-event{margin-top:6px;padding:5px;background:#1a2130;border-left:2px solid var(--purple);border-radius:4px;font-size:10px}.mini-cal-event{margin-top:3px;padding:2px 3px;background:#1a2130;border-left:2px solid var(--purple);border-radius:3px;font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.schedule-wrap{max-height:78vh;overflow:auto}.schedule .head{position:sticky;top:0;z-index:8}.schedule .cell.head{position:sticky;top:0;z-index:7;background:#151d27}.schedule .cell.time{position:sticky;left:0;z-index:6}.schedule .cell.head:first-child{left:0;z-index:9}.schedule{position:relative}.check-line{display:flex!important;align-items:center;gap:7px!important}.check-line input{width:auto!important}
   @media(max-width:900px){.memo-page-grid{grid-template-columns:1fr}.inventory-server-grid{grid-template-columns:repeat(2,1fr)}.inventory-worlds{grid-template-columns:repeat(3,1fr)}.mm-head,.mm-row{grid-template-columns:1fr 70px 1fr 1fr 80px 1fr}.mm-head span:nth-child(n+3),.mm-row input:nth-of-type(n+3){min-width:0}.letter-row{grid-template-columns:1fr 1.5fr 80px 80px}.item-head,.item-row{grid-template-columns:1.5fr .7fr 1fr 1fr 1fr 30px}}
   `;document.head.appendChild(css);
+
+
+  /* v36.4: 미니게임 카드의 inline onclick에서 접근할 수 있도록 전역 노출 */
+  window.renderMiniGamesPage=renderMiniGamesPage;
+  window.openMiniGame=openMiniGame;
+  window.backToMiniGames=backToMiniGames;
+  window.syncMiniPlayers=syncMiniPlayers;
+  window.selectAllMiniPlayers=selectAllMiniPlayers;
+  window.clearMiniPlayers=clearMiniPlayers;
+  window.addMiniCustom=addMiniCustom;
+  window.startMiniGame=startMiniGame;
+  window.renderSimulationHub=renderSimulationHub;
+  window.openSimulation=openSimulation;
+  window.runEnhance=runEnhance;
+  window.runGacha=runGacha;
+  window.runDice=runDice;
 
   /* Replace page render after DOM is ready, preserving cloud initialization. */
   const oldShow=window.showPage;
@@ -761,3 +876,679 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
 </script>
 </body>
 </html>
+
+<style id="v365-mini-game-fx">
+.mini-fx{margin-top:18px;border:1px solid #273247;border-radius:16px;background:#080d17;padding:18px;min-height:240px;overflow:hidden}
+.mini-fx-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.mini-fx-title{font-weight:800;font-size:18px}.mini-fx-status{font-size:13px;color:#8fa0b8}
+.mini-pin-lane,.mini-race-lane{position:relative;height:44px;border:1px solid #253147;border-radius:12px;background:linear-gradient(90deg,#0c1422,#101a2c);margin:8px 0;overflow:hidden}
+.mini-pin-lane:before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 46px,#27354d 47px 48px);opacity:.45}
+.mini-ball{position:absolute;left:0;top:9px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#d9dff0;color:#101522;font-size:12px;font-weight:900;box-shadow:0 0 18px rgba(170,190,255,.5);transform:translateX(0)}
+.mini-race-lane{height:48px}.mini-race-lane:after{content:"";position:absolute;right:12px;top:0;height:100%;width:3px;background:repeating-linear-gradient(0deg,#fff 0 6px,#111 6px 12px);opacity:.65}
+.mini-car{position:absolute;left:0;top:6px;font-size:27px;will-change:transform}
+.mini-ladder-wrap{position:relative;display:grid;grid-template-columns:repeat(var(--cols),1fr);gap:14px;padding:8px 14px 16px}
+.mini-ladder-col{position:relative;height:210px;border-left:3px solid #58677f;border-right:3px solid #58677f}
+.mini-rung{position:absolute;left:-3px;width:calc(100% + 6px);height:3px;background:#58677f}
+.mini-ladder-dot{position:absolute;width:18px;height:18px;border-radius:50%;background:#f2a45b;box-shadow:0 0 18px rgba(242,164,91,.7);left:50%;top:0;transform:translate(-50%,-50%);z-index:3}
+.mini-reveal{margin-top:12px;padding:12px 14px;border-radius:12px;background:#101827;border:1px solid #273247;text-align:center;font-weight:800}
+.mini-spin{animation:miniSpin .8s linear infinite}@keyframes miniSpin{to{transform:rotate(360deg)}}
+.mini-pulse{animation:miniPulse .8s ease-in-out infinite alternate}@keyframes miniPulse{to{filter:brightness(1.45);transform:scale(1.06)}}
+</style>
+<script>
+(function(){
+  function miniFxBox(title,status){
+    return `<div class="mini-fx"><div class="mini-fx-head"><div class="mini-fx-title">${title}</div><div class="mini-fx-status">${status}</div></div><div id="miniFxStage"></div></div>`;
+  }
+  function esc(s){return typeof escapeHtml==='function'?escapeHtml(s):String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+
+  async function animatePinball(results){
+    const stage=document.getElementById('miniFxStage'); if(!stage)return;
+    stage.innerHTML=results.map((x,i)=>`<div class="mini-pin-lane"><b style="position:absolute;left:10px;top:13px;z-index:2">${esc(x.n)}</b><div class="mini-ball" id="pb${i}">●</div></div>`).join('');
+    const width=Math.max(240,stage.clientWidth-42);
+    await Promise.all(results.map((x,i)=>new Promise(resolve=>{
+      const el=document.getElementById('pb'+i);
+      const wobble=60+Math.random()*90, finish=Math.max(35,width*(x.s/1000));
+      let t0=performance.now(), dur=900+Math.random()*900;
+      function frame(t){
+        let p=Math.min(1,(t-t0)/dur), ease=1-Math.pow(1-p,3);
+        let wob=Math.sin(p*18+i)*wobble*(1-p)*.035;
+        el.style.transform=`translateX(${finish*ease+wob}px)`;
+        if(p<1)requestAnimationFrame(frame);else resolve();
+      }
+      requestAnimationFrame(frame);
+    })));
+    document.querySelector('.mini-fx-status').textContent='결과 확정';
+  }
+
+  async function animateRace(results){
+    const stage=document.getElementById('miniFxStage'); if(!stage)return;
+    const best=Math.min(...results.map(x=>x.t)), max=Math.max(...results.map(x=>x.t));
+    stage.innerHTML=results.map((x,i)=>`<div class="mini-race-lane"><b style="position:absolute;left:10px;top:14px;z-index:2">${esc(x.n)}</b><div class="mini-car" id="rc${i}">🏎️</div></div>`).join('');
+    const width=Math.max(250,stage.clientWidth-55);
+    await Promise.all(results.map((x,i)=>new Promise(resolve=>{
+      const el=document.getElementById('rc'+i);
+      const dur=1200+(x.t-best)*450;
+      let t0=performance.now();
+      function frame(t){
+        let p=Math.min(1,(t-t0)/dur), ease=1-Math.pow(1-p,3);
+        el.style.transform=`translateX(${width*ease}px)`;
+        if(p<1)requestAnimationFrame(frame);else resolve();
+      }
+      requestAnimationFrame(frame);
+    })));
+    document.querySelector('.mini-fx-status').textContent='결승선 통과 · 순위 확정';
+  }
+
+  async function animateLadder(players, shuffled){
+    const stage=document.getElementById('miniFxStage'); if(!stage)return;
+    const n=players.length;
+    const rungs=[];
+    for(let i=0;i<n-1;i++) rungs.push({row:35+i*27,a:i,b:i+1});
+    stage.innerHTML=`<div class="mini-ladder-wrap" style="--cols:${n}">${players.map((p,i)=>`<div class="mini-ladder-col" id="lc${i}"><b style="position:absolute;top:-25px;left:50%;transform:translateX(-50%);white-space:nowrap">${esc(p)}</b></div>`).join('')}${rungs.map(r=>`<div class="mini-rung" style="top:${r.row}px;left:calc(${(r.a+.5)*(100/n)}%);width:${100/n}px"></div>`).join('')}</div><div class="mini-reveal" id="ladderReveal">사다리를 내려가는 중…</div>`;
+    const wrap=stage.querySelector('.mini-ladder-wrap');
+    const dot=document.createElement('div');dot.className='mini-ladder-dot';wrap.appendChild(dot);
+    for(let i=0;i<n;i++){
+      const x=(i+.5)*100/n;
+      dot.style.left=x+'%'; dot.style.top='0px';
+      await new Promise(r=>setTimeout(r,220));
+      dot.style.transition='top .22s ease,left .22s ease';
+      dot.style.top='210px';
+      await new Promise(r=>setTimeout(r,240));
+      dot.style.top='0px'; dot.style.transition='none';
+    }
+    document.getElementById('ladderReveal').innerHTML='🎉 결과 확정 · '+players.map((p,i)=>`${esc(p)} → ${esc(shuffled[i])}`).join('　');
+  }
+
+  function renderMiniResult(title, rows){
+    const box=document.getElementById('miniFxStage'); if(!box)return;
+    box.innerHTML=`<div class="mini-reveal" style="text-align:left"><h4 style="margin:0 0 10px">${title}</h4>${rows.join('')}</div>`;
+  }
+
+  window.startMiniGame = async function(){
+    const p=miniGameState.players;
+    if(p.length<2)return toast('2명 이상 선택해주세요.');
+    const game=miniGameState.game;
+    const extra=document.getElementById('extraPage');
+    let results, title;
+
+    /* 현재는 브라우저에서 결과를 만들고 연출합니다.
+       추후 서버 API가 결과를 반환하면 이 results 부분만 서버 응답으로 교체하면 됩니다.
+       핵심은 "결과 계산"과 "클라이언트 연출"을 분리하는 구조입니다. */
+    if(game==='pinball'){
+      results=p.map(n=>({n,s:Math.floor(Math.random()*1001)})).sort((a,b)=>b.s-a.s);
+      title='🎱 핀볼';
+      extra.innerHTML=extra.innerHTML+miniFxBox(title,'공이 튀는 중…');
+      await animatePinball(results);
+      renderMiniResult('🏆 핀볼 결과',results.map((x,i)=>`<div class="mini-result-row"><b>${i+1}위</b><span>${esc(x.n)}</span><strong>${x.s}점</strong></div>`));
+    }else if(game==='race'){
+      results=p.map(n=>({n,t:Math.random()*4+1})).sort((a,b)=>a.t-b.t);
+      title='🏎️ 경주';
+      extra.innerHTML=extra.innerHTML+miniFxBox(title,'출발 준비…');
+      await animateRace(results);
+      renderMiniResult('🏁 경주 결과',results.map((x,i)=>`<div class="mini-result-row"><b>${i+1}위</b><span>🏎️ ${esc(x.n)}</span><strong>${x.t.toFixed(2)}초</strong></div>`));
+    }else{
+      const shuffled=[...p].sort(()=>Math.random()-.5);
+      title='🪜 사다리타기';
+      extra.innerHTML=extra.innerHTML+miniFxBox(title,'사다리 생성 중…');
+      await animateLadder(p,shuffled);
+      renderMiniResult('🪜 사다리 결과',p.map((n,i)=>`<div class="mini-result-row"><b>${esc(n)}</b><span>→</span><strong>${esc(shuffled[i])}</strong></div>`));
+    }
+    document.querySelectorAll('.mini-fx').forEach(x=>x.classList.add('mini-pulse'));
+  };
+})();
+</script>
+
+
+<script>
+/* v36.6: 인라인 onclick 의존을 제거하고 미니게임 시작 버튼을 이벤트 위임으로 확실하게 연결 */
+(function(){
+  function bindMiniGameStart(){
+    if(window.__v366MiniBound) return;
+    window.__v366MiniBound=true;
+    document.addEventListener('click', function(e){
+      const btn=e.target.closest('#miniGameStartBtn');
+      if(!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if(typeof window.startMiniGame==='function'){
+        Promise.resolve(window.startMiniGame()).catch(err=>{
+          console.error('Mini game start error:',err);
+          if(typeof window.toast==='function') window.toast('게임 실행 중 오류가 발생했습니다.');
+        });
+      }
+    }, true);
+  }
+
+  const originalRender=window.renderMiniGamesPage;
+  if(typeof originalRender==='function'){
+    window.renderMiniGamesPage=function(){
+      originalRender.apply(this,arguments);
+      const buttons=document.querySelectorAll('button[onclick="startMiniGame()"]');
+      buttons.forEach(b=>{
+        b.removeAttribute('onclick');
+        b.id='miniGameStartBtn';
+      });
+    };
+  }
+  bindMiniGameStart();
+
+  /* 기존 함수가 다시 노출되거나 렌더 함수가 재정의되는 경우에도 버튼을 잡는다. */
+  const obs=new MutationObserver(()=>{
+    document.querySelectorAll('button[onclick="startMiniGame()"]').forEach(b=>{
+      b.removeAttribute('onclick');
+      b.id='miniGameStartBtn';
+    });
+  });
+  obs.observe(document.documentElement,{subtree:true,childList:true});
+})();
+</script>
+
+
+<style>
+.v367-stage{margin-top:18px;padding:18px;border:1px solid #29364b;border-radius:14px;background:#080d16}
+.v367-lane{position:relative;height:48px;margin:8px 0;border:1px solid #26344a;border-radius:10px;overflow:hidden;background:#101827}
+.v367-lane>span:first-child{position:absolute;left:12px;top:14px;z-index:2;font-weight:700}
+.v367-ball,.v367-car{position:absolute;left:110px;top:8px;font-size:25px;transition:left 1.6s cubic-bezier(.12,.72,.2,1)}
+.v367-finish{position:absolute;right:10px;top:0;height:100%;border-left:3px dashed #aab5c8}
+.v367-result{margin-top:14px;padding:14px;border-radius:10px;background:#111a29;border:1px solid #2a3950}
+</style>
+<script>
+(function(){
+  function safe(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+  function gameStart(){
+    const btn=document.getElementById('miniGameStartBtn');
+    if(!btn)return;
+    const game=btn.getAttribute('data-mini-game')||'pinball';
+    const names=[...document.querySelectorAll('.mini-player-grid input:checked')].map(x=>x.value);
+    if(names.length<2){
+      alert('2명 이상 선택해주세요.');
+      return;
+    }
+    if(game==='race' && names.length>6){
+      alert('경주는 최대 6명까지 가능합니다.');
+      return;
+    }
+
+    const extra=document.getElementById('extraPage');
+    if(!extra)return;
+
+    let rows;
+    if(game==='pinball'){
+      rows=names.map(n=>({n,s:Math.floor(Math.random()*1001)})).sort((a,b)=>b.s-a.s);
+      extra.innerHTML=`<div class="card data-page mini-games"><div class="head"><div><div class="title">🎱 핀볼</div><div class="admin-sub">공이 튕기며 점수를 결정합니다.</div></div></div><div class="v367-stage" id="v367Stage"><div style="text-align:center;margin-bottom:12px">🎱 <b>START!</b></div>${rows.map((r,i)=>`<div class="v367-lane"><span>${safe(r.n)}</span><div class="v367-ball" id="v367b${i}">⚪</div><div class="v367-finish"></div></div>`).join('')}</div></div>`;
+      requestAnimationFrame(()=>rows.forEach((r,i)=>setTimeout(()=>{const e=document.getElementById('v367b'+i);if(e)e.style.left=(Math.max(140,(document.getElementById('v367Stage').clientWidth-150)*(r.s/1000)))+'px'},i*180)));
+      setTimeout(()=>{const st=document.getElementById('v367Stage');if(st)st.insertAdjacentHTML('beforeend',`<div class="v367-result"><b>🏆 결과</b>${rows.map((r,i)=>`<div class="mini-result-row"><b>${i+1}위</b><span>${safe(r.n)}</span><strong>${r.s}점</strong></div>`).join('')}</div>`)},2200);
+    }else if(game==='race'){
+      rows=names.map(n=>({n,t:1+Math.random()*4})).sort((a,b)=>a.t-b.t);
+      extra.innerHTML=`<div class="card data-page mini-games"><div class="head"><div><div class="title">🏎️ 경주</div><div class="admin-sub">출발부터 결승선까지 실제로 달립니다.</div></div></div><div class="v367-stage" id="v367Stage"><div style="text-align:center;margin-bottom:12px">🏁 <b>READY... GO!</b></div>${rows.map((r,i)=>`<div class="v367-lane"><span>${safe(r.n)}</span><div class="v367-car" id="v367c${i}">🏎️</div><div class="v367-finish"></div></div>`).join('')}</div></div>`;
+      requestAnimationFrame(()=>rows.forEach((r,i)=>setTimeout(()=>{const e=document.getElementById('v367c'+i);if(e)e.style.left=(document.getElementById('v367Stage').clientWidth-70)+'px'},i*120)));
+      setTimeout(()=>{const st=document.getElementById('v367Stage');if(st)st.insertAdjacentHTML('beforeend',`<div class="v367-result"><b>🏁 최종 순위</b>${rows.map((r,i)=>`<div class="mini-result-row"><b>${i+1}위</b><span>🏎️ ${safe(r.n)}</span><strong>${r.t.toFixed(2)}초</strong></div>`).join('')}</div>`)},2800);
+    }else{
+      const shuffled=[...names].sort(()=>Math.random()-.5);
+      extra.innerHTML=`<div class="card data-page mini-games"><div class="head"><div><div class="title">🪜 사다리타기</div><div class="admin-sub">사다리를 타고 결과를 확인합니다.</div></div></div><div class="v367-stage"><div style="text-align:center;font-size:18px;margin-bottom:18px">🪜 사다리 진행 중...</div><div class="v367-result" id="v367ladder">결과를 추첨하고 있습니다<span class="mini-spin"> ⏳</span></div></div></div>`;
+      setTimeout(()=>{const e=document.getElementById('v367ladder');if(e)e.innerHTML=`<b>🎉 결과 확정</b>${names.map((n,i)=>`<div class="mini-result-row"><b>${safe(n)}</b><span>→</span><strong>${safe(shuffled[i])}</strong></div>`).join('')}`},2200);
+    }
+  }
+
+  function bind(){
+    document.addEventListener('click',e=>{
+      const b=e.target.closest('button[onclick="startMiniGame()"],#miniGameStartBtn');
+      if(!b)return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      b.id='miniGameStartBtn';
+      const title=document.querySelector('.mini-games .title')?.textContent||'';
+      b.setAttribute('data-mini-game',title.includes('경주')?'race':title.includes('사다리')?'ladder':'pinball');
+      gameStart();
+    },true);
+
+    const obs=new MutationObserver(()=>{
+      document.querySelectorAll('button[onclick="startMiniGame()"]').forEach(b=>{
+        b.removeAttribute('onclick');
+        b.id='miniGameStartBtn';
+        const title=document.querySelector('.mini-games .title')?.textContent||'';
+        b.setAttribute('data-mini-game',title.includes('경주')?'race':title.includes('사다리')?'ladder':'pinball');
+      });
+    });
+    obs.observe(document.documentElement,{subtree:true,childList:true});
+  }
+  bind();
+})();
+</script>
+
+
+<style id="v368-mini-games">
+.v368-games{padding:24px}
+.v368-game-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-top:20px}
+.v368-game-card{min-height:190px;text-align:left;padding:26px;border:1px solid #2a3850;border-radius:18px;background:linear-gradient(145deg,#0c1422,#0a101b);color:inherit;cursor:pointer;transition:.18s;display:flex;flex-direction:column;justify-content:center}
+.v368-game-card:hover{transform:translateY(-2px);border-color:#6b7fa5;background:#101a2a}
+.v368-game-card .ico{font-size:38px;margin-bottom:16px}.v368-game-card b{font-size:22px}.v368-game-card small{margin-top:8px;color:#8c9bb2;font-size:14px}
+.v368-panel{padding:24px}.v368-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}
+.v368-sub{color:#8c9bb2;font-size:14px;margin-top:5px}
+.v368-input-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.v368-input-row{display:flex;align-items:center;gap:8px}
+.v368-input-row input{flex:1}
+.v368-tools{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}
+.v368-race-wrap{margin-top:18px;border:1px solid #28364c;border-radius:16px;padding:12px;background:#070c14}
+#v368RaceCanvas{width:100%;height:430px;display:block}
+.v368-race-status{text-align:center;padding:12px;font-weight:800;font-size:18px}
+.v368-results{margin-top:16px;border:1px solid #29384e;border-radius:14px;padding:14px;background:#0d1522}
+.v368-result-row{display:grid;grid-template-columns:60px 1fr 120px;gap:10px;padding:10px 4px;border-bottom:1px solid #202c3e}
+.v368-result-row:last-child{border-bottom:0}
+.v368-ladder-config{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.v368-ladder-board{margin-top:20px;border:1px solid #29384e;border-radius:16px;padding:18px;background:#070c14;overflow:auto}
+.v368-ladder-svg{width:100%;min-width:620px;height:420px;display:block}
+.v368-person-btn{cursor:pointer}
+.v368-person-btn.active{outline:2px solid #f3a35b}
+@media(max-width:900px){.v368-game-grid,.v368-ladder-config{grid-template-columns:1fr}.v368-input-grid{grid-template-columns:1fr 1fr}}
+</style>
+<script>
+(function(){
+  const PINBALL_URL='https://lazygyu.github.io/roulette/';
+
+  function esc368(s){
+    return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+  function root368(){return document.getElementById('extraPage');}
+  function setRoot368(s){const r=root368();if(r)r.innerHTML=s;}
+
+  window.renderMiniGamesV368=function(){
+    setRoot368(`<div class="card data-page v368-games">
+      <div class="head"><div><div class="title">🎮 미니 게임</div><div class="v368-sub">직접 이름을 입력해서 바로 게임을 즐길 수 있습니다.</div></div></div>
+      <div class="v368-game-grid">
+        <a class="v368-game-card" href="${PINBALL_URL}" target="_blank" rel="noopener noreferrer">
+          <span class="ico">🎱</span><b>핀볼</b><small>외부 핀볼 게임으로 바로 이동합니다.</small>
+        </a>
+        <button class="v368-game-card" onclick="renderV368RaceSetup()"><span class="ico">🏎️</span><b>경주</b><small>최대 6명이 참가하며 총 10초 동안 실제로 추월하고 뒤처집니다.</small></button>
+        <button class="v368-game-card" onclick="renderV368LadderSetup()"><span class="ico">🪜</span><b>사다리타기</b><small>참가자와 결과를 직접 입력하고, 한 명씩 결과를 확인할 수 있습니다.</small></button>
+        <button class="v368-game-card" onclick="renderV368Simulation()"><span class="ico">🎰</span><b>시뮬레이션</b><small>강화·뽑기·주사위 시뮬레이션을 사용합니다.</small></button>
+      </div>
+    </div>`);
+  };
+
+  function namesInputs(prefix,count,max){
+    return Array.from({length:count},(_,i)=>`<div class="v368-input-row"><span style="width:26px;text-align:center">${i+1}</span><input id="${prefix}${i}" maxlength="12" placeholder="참가자 ${i+1}"></div>`).join('');
+  }
+
+  window.renderV368RaceSetup=function(){
+    setRoot368(`<div class="card data-page v368-panel">
+      <div class="v368-head"><div><div class="title">🏎️ 10초 레이스</div><div class="v368-sub">이름을 직접 입력하세요. 최대 6명입니다.</div></div><button class="ghost" onclick="renderMiniGamesV368()">← 미니 게임</button></div>
+      <div class="v368-input-grid">${namesInputs('v368r',6)}</div>
+      <div class="v368-tools"><button class="primary" onclick="startV368Race()">🏁 레이스 시작</button><button class="ghost" onclick="fillV368RaceSample()">예시 입력</button></div>
+      <div class="v368-sub">레이스는 정확히 10초 동안 진행되며, 중간에 순위가 계속 뒤바뀌도록 움직입니다.</div>
+    </div>`);
+  };
+  window.fillV368RaceSample=function(){
+    ['베키','뚠뚠','리츠','환타','큐르','꾸블'].forEach((n,i)=>{const e=document.getElementById('v368r'+i);if(e)e.value=n;});
+  };
+
+  window.startV368Race=function(){
+    const names=Array.from({length:6},(_,i)=>document.getElementById('v368r'+i)?.value.trim()).filter(Boolean);
+    if(names.length<2){alert('2명 이상 입력해주세요.');return;}
+    if(new Set(names).size!==names.length){alert('같은 이름은 사용할 수 없습니다.');return;}
+    const lanes=names.map((n,i)=>({n,i,skill:.88+Math.random()*.24,phase:Math.random()*6.28,noise:Math.random()*5}));
+    lanes.forEach(x=>x.finish=0.88+Math.random()*.12);
+    setRoot368(`<div class="card data-page v368-panel">
+      <div class="v368-head"><div><div class="title">🏎️ 10초 레이스</div><div class="v368-sub">순위가 계속 바뀝니다. 마지막 순간까지 결과를 알 수 없습니다.</div></div></div>
+      <div class="v368-race-wrap"><canvas id="v368RaceCanvas" width="1100" height="430"></canvas><div id="v368RaceStatus" class="v368-race-status">READY</div></div>
+    </div>`);
+    runV368Race(lanes);
+  };
+
+  function runV368Race(lanes){
+    const c=document.getElementById('v368RaceCanvas'),ctx=c.getContext('2d'),status=document.getElementById('v368RaceStatus');
+    const start=performance.now(), duration=10000;
+    const colors=['#5aa9ff','#c084fc','#f59e72','#65d6a0','#f4d35e','#ef7aa8'];
+    function frame(now){
+      const t=Math.min(1,(now-start)/duration),sec=t*10;
+      ctx.clearRect(0,0,c.width,c.height);
+      ctx.fillStyle='#070c14';ctx.fillRect(0,0,c.width,c.height);
+      const left=190,right=1035,top=48,gap=58;
+      ctx.font='700 15px sans-serif';
+      lanes.forEach((p,i)=>{
+        const y=top+i*gap;
+        ctx.strokeStyle='#26344a';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(right,y);ctx.stroke();
+        ctx.fillStyle='#dce5f4';ctx.fillText(p.n,20,y+5);
+        ctx.strokeStyle='#34445e';ctx.setLineDash([6,8]);ctx.beginPath();ctx.moveTo(right,y-24);ctx.lineTo(right,y+24);ctx.stroke();ctx.setLineDash([]);
+      });
+      // Deterministic-but-chaotic movement. Base progress differs per player,
+      // while multiple sine waves create overtakes throughout the 10 seconds.
+      const pos=lanes.map((p,i)=>{
+        const wave=0.075*Math.sin(sec*1.75+p.phase)+0.045*Math.sin(sec*3.4+p.phase*1.7)+0.025*Math.sin(sec*6.1+p.noise);
+        const momentum=(p.skill-.99)*0.42;
+        let v=Math.max(0,Math.min(1, t + wave*(0.7+0.3*t) + momentum*t));
+        if(t===1)v=p.finish;
+        return {...p,v};
+      });
+      pos.sort((a,b)=>b.v-a.v);
+      pos.forEach((p,rank)=>{
+        const original=lanes.findIndex(x=>x.i===p.i), y=top+original*gap;
+        const x=left+(right-left)*p.v;
+        ctx.font='26px sans-serif';ctx.fillText('🏎️',x-13,y-15);
+        ctx.fillStyle=colors[p.i%colors.length];ctx.beginPath();ctx.arc(x+2,y+10,5,0,Math.PI*2);ctx.fill();
+      });
+      status.textContent=t<1?`🏁 진행 중  ${sec.toFixed(1)} / 10.0초`:'🏆 결승선 도착!';
+      if(t<1){requestAnimationFrame(frame);return;}
+      showV368RaceResult(pos);
+    }
+    requestAnimationFrame(frame);
+  }
+  function showV368RaceResult(sorted){
+    const c=document.getElementById('v368RaceCanvas'); if(!c)return;
+    const parent=c.parentElement;
+    const rows=sorted.map((p,i)=>`<div class="v368-result-row"><b>${i+1}위</b><span>🏎️ ${esc368(p.n)}</span><strong>${(9.25+p.i*.11+Math.random()*.18).toFixed(2)}초</strong></div>`).join('');
+    parent.insertAdjacentHTML('afterend',`<div class="v368-results"><b>🏁 최종 결과</b>${rows}</div>`);
+  }
+
+  window.renderV368LadderSetup=function(){
+    setRoot368(`<div class="card data-page v368-panel">
+      <div class="v368-head"><div><div class="title">🪜 사다리타기</div><div class="v368-sub">네이버 사다리처럼 참가자와 결과를 직접 입력합니다.</div></div><button class="ghost" onclick="renderMiniGamesV368()">← 미니 게임</button></div>
+      <div class="v368-ladder-config">
+        <div><h3>참가자</h3><div id="v368Names" class="v368-input-grid" style="grid-template-columns:1fr">${namesInputs('v368n',12)}</div></div>
+        <div><h3>결과</h3><div id="v368Outs" class="v368-input-grid" style="grid-template-columns:1fr">${namesInputs('v368o',12).replaceAll('placeholder="참가자','placeholder="결과')}</div></div>
+      </div>
+      <div class="v368-tools"><button class="primary" onclick="startV368Ladder()">🪜 사다리 시작</button><button class="ghost" onclick="fillV368LadderSample()">예시 입력</button></div>
+      <div class="v368-sub">2~12명까지 사용할 수 있으며, 결과 개수도 참가자 수와 같아야 합니다.</div>
+    </div>`);
+  };
+  window.fillV368LadderSample=function(){
+    ['베키','뚠뚠','리츠','환타','큐르','꾸블'].forEach((n,i)=>{document.getElementById('v368n'+i).value=n;});
+    ['1번 당첨','2번 당첨','꽝','간식 사기','면제','다시하기'].forEach((n,i)=>{document.getElementById('v368o'+i).value=n;});
+  };
+
+  function makeLadder368(n){
+    const levels=10, steps=[];
+    for(let r=0;r<levels;r++){
+      const row=[];
+      for(let i=0;i<n-1;i++)row.push(false);
+      let last=-2;
+      const shuffled=Array.from({length:n-1},(_,i)=>i).sort(()=>Math.random()-.5);
+      shuffled.forEach(i=>{if(i!==last+1 && Math.random()<.55){row[i]=true;last=i;}});
+      steps.push(row);
+    }
+    return steps;
+  }
+  function traceLadder368(start,steps){
+    let x=start;
+    for(let r=0;r<steps.length;r++){
+      if(x>0 && steps[r][x-1])x--;
+      else if(x<steps[r].length && steps[r][x])x++;
+    }
+    return x;
+  }
+  window.startV368Ladder=function(){
+    const names=Array.from({length:12},(_,i)=>document.getElementById('v368n'+i)?.value.trim()).filter(Boolean);
+    const outs=Array.from({length:12},(_,i)=>document.getElementById('v368o'+i)?.value.trim()).filter(Boolean);
+    if(names.length<2){alert('참가자를 2명 이상 입력해주세요.');return;}
+    if(names.length!==outs.length){alert('참가자 수와 결과 수를 같게 입력해주세요.');return;}
+    if(new Set(names).size!==names.length){alert('같은 참가자 이름은 사용할 수 없습니다.');return;}
+    const steps=makeLadder368(names.length);
+    const mapping=names.map((n,i)=>({name:n,result:outs[traceLadder368(i,steps)],start:i,end:traceLadder368(i,steps),revealed:false}));
+    renderV368LadderBoard(names,outs,steps,mapping);
+  };
+
+  function renderV368LadderBoard(names,outs,steps,mapping){
+    const n=names.length,W=920,H=420,left=60,right=W-60,top=55,bottom=350;
+    const xs=Array.from({length:n},(_,i)=>left+(right-left)*(i/(n-1)));
+    let svg=`<svg class="v368-ladder-svg" id="v368LadderSvg" viewBox="0 0 ${W} ${H}">
+      <defs><filter id="v368Glow"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
+    names.forEach((name,i)=>svg+=`<g class="v368-person-btn" data-index="${i}"><rect x="${xs[i]-45}" y="8" width="90" height="34" rx="9" fill="#111b2b" stroke="#34445e"/><text x="${xs[i]}" y="31" fill="#e7edf8" text-anchor="middle" font-size="14">${esc368(name)}</text></g>`);
+    outs.forEach((o,i)=>svg+=`<rect x="${xs[i]-50}" y="365" width="100" height="36" rx="9" fill="#111b2b" stroke="#34445e"/><text x="${xs[i]}" y="389" fill="#e7edf8" text-anchor="middle" font-size="13">${esc368(o)}</text>`);
+    xs.forEach(x=>svg+=`<line x1="${x}" y1="${top}" x2="${x}" y2="${bottom}" stroke="#64748b" stroke-width="3"/>`);
+    steps.forEach((row,r)=>row.forEach((on,i)=>{if(on){const y=top+(bottom-top)*(r+1)/(steps.length+1);svg+=`<line x1="${xs[i]}" y1="${y}" x2="${xs[i+1]}" y2="${y}" stroke="#64748b" stroke-width="3"/>`;}}));
+    svg+='</svg>';
+    setRoot368(`<div class="card data-page v368-panel">
+      <div class="v368-head"><div><div class="title">🪜 사다리타기</div><div class="v368-sub">참가자 이름을 클릭하면 사다리를 따라 결과를 공개합니다.</div></div><div class="v368-tools" style="margin:0"><button class="ghost" onclick="renderV368LadderSetup()">↻ 다시하기</button><button class="ghost" onclick="renderMiniGamesV368()">← 미니 게임</button></div></div>
+      <div class="v368-ladder-board">${svg}</div>
+      <div class="v368-tools"><button class="primary" onclick="revealAllV368Ladder()">전체 결과 보기</button></div>
+      <div id="v368LadderResults" class="v368-results"><b>결과</b><div class="v368-sub">위의 참가자를 클릭해 한 명씩 확인하세요.</div></div>
+    </div>`);
+    window.__v368Ladder={names,outs,steps,mapping,xs,top,bottom,W,H};
+    document.querySelectorAll('#v368LadderSvg .v368-person-btn').forEach(el=>el.addEventListener('click',()=>revealOneV368(+el.dataset.index)));
+  }
+  function revealOneV368(idx){
+    const st=window.__v368Ladder;if(!st)return;
+    st.mapping[idx].revealed=true;
+    const p=st.mapping[idx];
+    const res=document.getElementById('v368LadderResults');
+    const revealed=st.mapping.filter(x=>x.revealed);
+    res.innerHTML='<b>결과</b>'+revealed.map(x=>`<div class="v368-result-row"><b>${esc368(x.name)}</b><span>→</span><strong>${esc368(x.result)}</strong></div>`).join('');
+    const person=document.querySelector(`#v368LadderSvg .v368-person-btn[data-index="${idx}"]`);
+    if(person)person.classList.add('active');
+    drawV368Trace(idx);
+  }
+  function revealAllV368Ladder(){const st=window.__v368Ladder;if(!st)return;st.mapping.forEach(x=>x.revealed=true);st.mapping.forEach((x,i)=>drawV368Trace(i));const res=document.getElementById('v368LadderResults');res.innerHTML='<b>🎉 전체 결과</b>'+st.mapping.map(x=>`<div class="v368-result-row"><b>${esc368(x.name)}</b><span>→</span><strong>${esc368(x.result)}</strong></div>`).join('');}
+  function drawV368Trace(idx){
+    const st=window.__v368Ladder;if(!st)return;
+    const svg=document.getElementById('v368LadderSvg');if(!svg)return;
+    svg.querySelectorAll('.v368-trace').forEach(e=>e.remove());
+    const n=st.names.length,xs=st.xs,top=st.top,bottom=st.bottom,steps=st.steps;
+    const pts=[[xs[idx],top]];
+    let x=idx;
+    for(let r=0;r<steps.length;r++){
+      const y=top+(bottom-top)*(r+1)/(steps.length+1);
+      if(x>0 && steps[r][x-1]){pts.push([xs[x],y],[xs[x-1],y]);x--;}
+      else if(x<steps[r].length && steps[r][x]){pts.push([xs[x],y],[xs[x+1],y]);x++;}
+      else pts.push([xs[x],y]);
+    }
+    pts.push([xs[x],bottom]);
+    const poly=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+    poly.setAttribute('class','v368-trace');poly.setAttribute('points',pts.map(p=>p.join(',')).join(' '));poly.setAttribute('fill','none');poly.setAttribute('stroke','#f3a35b');poly.setAttribute('stroke-width','5');poly.setAttribute('stroke-linecap','round');poly.setAttribute('stroke-linejoin','round');poly.setAttribute('filter','url(#v368Glow)');svg.appendChild(poly);
+  }
+
+  // Keep the existing simulation implementation reachable from the new hub.
+  window.renderV368Simulation=function(){
+    if(typeof renderSimulationHub==='function') renderSimulationHub();
+    else renderMiniGamesV368();
+  };
+})();
+</script>
+
+
+<style id="v369-ladder">
+.v369-horizontal-inputs{display:flex;gap:10px;overflow-x:auto;padding:6px 2px 12px}
+.v369-input-item{min-width:130px;flex:1}.v369-input-item label{display:block;font-size:12px;color:#8c9bb2;margin-bottom:6px}
+.v369-input-item input{width:100%;box-sizing:border-box}
+.v369-board{margin-top:20px;border:1px solid #29384e;border-radius:16px;padding:16px;background:#070c14;overflow-x:auto}
+.v369-svg{width:100%;min-width:700px;height:auto;display:block}
+.v369-start-row,.v369-end-row{display:flex;justify-content:space-around;gap:10px;min-width:700px;margin:0 60px}
+.v369-chip{padding:8px 12px;border:1px solid #34445e;border-radius:9px;background:#111b2b;text-align:center;white-space:nowrap}
+.v369-trace{stroke:#f3a35b!important;stroke-width:6!important;stroke-linecap:round;stroke-linejoin:round;fill:none;filter:url(#v369Glow)}
+.v369-ball{fill:#f3a35b;filter:url(#v369Glow)}
+</style>
+<script>
+(function(){
+  const esc=s=>String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  function inputs(prefix,label,count){
+    return `<div class="v369-horizontal-inputs">${Array.from({length:count},(_,i)=>`<div class="v369-input-item"><label>${i+1}번 ${label}</label><input id="${prefix}${i}" maxlength="12" placeholder="${label} ${i+1}"></div>`).join('')}</div>`;
+  }
+
+  window.renderV369LadderSetup=function(){
+    const r=document.getElementById('extraPage');if(!r)return;
+    r.innerHTML=`<div class="card data-page v368-panel">
+      <div class="v368-head"><div><div class="title">🪜 사다리타기</div><div class="v368-sub">참가자와 결과를 가로로 입력하고, 네이버 사다리처럼 선을 따라 이동합니다.</div></div><button class="ghost" type="button" id="v369Back">← 게임 선택</button></div>
+      <h3 style="margin:8px 0">참가자</h3>${inputs('v369n','참가자',12)}
+      <h3 style="margin:14px 0 8px">결과</h3>${inputs('v369o','결과',12)}
+      <div class="v368-tools"><button class="primary" type="button" id="v369Start">🪜 사다리 시작</button><button class="ghost" type="button" id="v369Sample">예시 입력</button></div>
+      <div class="v368-sub">2~12명까지 가능합니다. 빈 칸은 제외되며 참가자 수와 결과 수가 같아야 합니다.</div>
+    </div>`;
+    document.getElementById('v369Back').onclick=()=>window.renderMiniGamesV368();
+    document.getElementById('v369Sample').onclick=()=>{
+      ['베키','뚠뚠','리츠','환타','큐르','꾸블'].forEach((n,i)=>document.getElementById('v369n'+i).value=n);
+      ['1등','2등','꽝','간식','면제','다시'].forEach((n,i)=>document.getElementById('v369o'+i).value=n);
+    };
+    document.getElementById('v369Start').onclick=start;
+  };
+
+  function makeSteps(n){
+    const rows=[];
+    for(let r=0;r<12;r++){
+      const row=Array(n-1).fill(false);
+      for(let i=0;i<n-1;i++){
+        if(i>0&&row[i-1])continue;
+        if(Math.random()<0.42)row[i]=true;
+      }
+      rows.push(row);
+    }
+    return rows;
+  }
+  function trace(start,steps){
+    let x=start;
+    for(const row of steps){
+      if(x>0&&row[x-1])x--;
+      else if(x<row.length&&row[x])x++;
+    }
+    return x;
+  }
+  function start(){
+    const names=Array.from({length:12},(_,i)=>document.getElementById('v369n'+i)?.value.trim()).filter(Boolean);
+    const outs=Array.from({length:12},(_,i)=>document.getElementById('v369o'+i)?.value.trim()).filter(Boolean);
+    if(names.length<2){alert('참가자를 2명 이상 입력해주세요.');return}
+    if(names.length!==outs.length){alert('참가자 수와 결과 수를 같게 입력해주세요.');return}
+    if(new Set(names).size!==names.length){alert('같은 참가자 이름은 사용할 수 없습니다.');return}
+    const steps=makeSteps(names.length);
+    const ends=names.map((_,i)=>trace(i,steps));
+    const state={names,outs,steps,ends};
+    window.__v369=state;
+    drawBoard(state);
+  }
+
+  function drawBoard(st){
+    const n=st.names.length,W=1000,H=520,L=80,R=920,TOP=85,BOT=430;
+    const xs=Array.from({length:n},(_,i)=>L+(R-L)*(i/(n-1)));
+    let svg=`<svg id="v369Svg" class="v369-svg" viewBox="0 0 ${W} ${H}" aria-label="사다리">`;
+    svg+=`<defs><filter id="v369Glow"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
+    xs.forEach((x,i)=>svg+=`<line x1="${x}" y1="${TOP}" x2="${x}" y2="${BOT}" stroke="#596981" stroke-width="4"/>`);
+    st.steps.forEach((row,ri)=>row.forEach((on,i)=>{
+      if(on){const y=TOP+(BOT-TOP)*(ri+1)/(st.steps.length+1);svg+=`<line x1="${xs[i]}" y1="${y}" x2="${xs[i+1]}" y2="${y}" stroke="#596981" stroke-width="4"/>`;}
+    }));
+    svg+=`</svg>`;
+    const startChips=st.names.map((n,i)=>`<div class="v369-chip">${esc(n)}</div>`).join('');
+    const endChips=st.outs.map((o,i)=>`<div class="v369-chip">${esc(o)}</div>`).join('');
+    const r=document.getElementById('extraPage');
+    r.innerHTML=`<div class="card data-page v368-panel">
+      <div class="v368-head"><div><div class="title">🪜 사다리타기</div><div class="v368-sub">참가자를 클릭하면 주황색 선이 사다리를 따라 내려가 결과까지 이동합니다.</div></div><div class="v368-tools" style="margin:0"><button class="ghost" id="v369Again">↻ 다시하기</button><button class="ghost" id="v369Home">← 게임 선택</button></div></div>
+      <div class="v369-start-row">${startChips}</div>
+      <div class="v369-board">${svg}</div>
+      <div class="v369-end-row">${endChips}</div>
+      <div class="v368-tools"><button class="primary" id="v369All">전체 결과 보기</button></div>
+      <div id="v369Results" class="v368-results" aria-live="polite"><b>결과</b><div class="v368-sub">위의 참가자 이름을 클릭하세요.</div></div>
+    </div>`;
+    document.getElementById('v369Again').onclick=()=>window.renderV369LadderSetup();
+    document.getElementById('v369Home').onclick=()=>window.renderMiniGamesV368();
+    document.getElementById('v369All').onclick=()=>{st.names.forEach((_,i)=>reveal(i));};
+    document.querySelectorAll('.v369-start-row .v369-chip').forEach((el,i)=>el.onclick=()=>reveal(i));
+  }
+
+  function reveal(idx){
+    const st=window.__v369;if(!st)return;
+    const svg=document.getElementById('v369Svg');if(!svg)return;
+    svg.querySelectorAll('.v369-trace,.v369-ball').forEach(e=>e.remove());
+    const n=st.names.length,W=1000,H=520,L=80,R=920,TOP=85,BOT=430;
+    const xs=Array.from({length:n},(_,i)=>L+(R-L)*(i/(n-1)));
+    let x=idx,pts=[[xs[x],TOP]];
+    for(let ri=0;ri<st.steps.length;ri++){
+      const y=TOP+(BOT-TOP)*(ri+1)/(st.steps.length+1);
+      if(x>0&&st.steps[ri][x-1]){pts.push([xs[x],y],[xs[x-1],y]);x--;}
+      else if(x<st.steps[ri].length&&st.steps[ri][x]){pts.push([xs[x],y],[xs[x+1],y]);x++;}
+      else pts.push([xs[x],y]);
+    }
+    pts.push([xs[x],BOT]);
+    const poly=document.createElementNS('http://www.w3.org/2000/svg','polyline');
+    poly.setAttribute('class','v369-trace');poly.setAttribute('points',pts.map(p=>p.join(',')).join(' '));
+    svg.appendChild(poly);
+    const ball=document.createElementNS('http://www.w3.org/2000/svg','circle');ball.setAttribute('class','v369-ball');ball.setAttribute('r','9');svg.appendChild(ball);
+    const total=pts.length-1,dur=2200,start=performance.now();
+    function animate(now){
+      const p=Math.min(1,(now-start)/dur),e=p<.5?2*p*p:1-Math.pow(-2*p+2,2)/2;
+      const q=e*total,k=Math.floor(q),f=q-k,a=pts[Math.min(k,total)],b=pts[Math.min(k+1,total)];
+      ball.setAttribute('cx',a[0]+(b[0]-a[0])*f);ball.setAttribute('cy',a[1]+(b[1]-a[1])*f);
+      if(p<1)requestAnimationFrame(animate);else{
+        const res=document.getElementById('v369Results');
+        const existing=res.querySelector('.v369-current');
+        if(existing)existing.remove();
+        res.insertAdjacentHTML('beforeend',`<div class="v369-current v369-result-row"><b>${esc(st.names[idx])}</b><span>→</span><strong>${esc(st.outs[x])}</strong></div>`);
+      }
+    }
+    requestAnimationFrame(animate);
+  }
+})();
+</script>
+<script>window.renderV368LadderSetup=window.renderV369LadderSetup;</script>
+
+<script>
+/* v36.11
+   로그인한 닉네임을 cloudLoad/cloudRefresh가 베키로 덮어쓰지 않도록
+   로그인 세션을 단일 기준으로 사용합니다. 또한 닉네임으로 소유자를
+   판별하지 않고 Supabase owner user id로만 판별합니다.
+*/
+(function(){
+  const LOGIN_KEY_V3611='ddunteam.login';
+
+  function getSavedNick(){
+    try{
+      const v=JSON.parse(localStorage.getItem(LOGIN_KEY_V3611)||'null');
+      return v && typeof v.nickname==='string' ? v.nickname.trim() : '';
+    }catch(e){return '';}
+  }
+
+  /* cloudLoad 이후에도 로그인한 닉네임을 복원 */
+  const baseCloudLoad=window.cloudLoad;
+  if(typeof baseCloudLoad==='function' && !window.__v3611CloudLoadWrapped){
+    window.__v3611CloudLoadWrapped=true;
+    window.cloudLoad=async function(){
+      const savedNick=getSavedNick();
+      const result=await baseCloudLoad.apply(this,arguments);
+      if(savedNick && Array.isArray(window.members) && window.members.some(m=>m[0]===savedNick)){
+        currentNick=savedNick;
+        try{localStorage.setItem('clanNick',savedNick);}catch(e){}
+      }
+      return result;
+    };
+  }
+
+  /* realtime refresh 후에도 절대 베키로 돌아가지 않음 */
+  const baseCloudRefresh=window.cloudRefresh;
+  if(typeof baseCloudRefresh==='function' && !window.__v3611CloudRefreshWrapped){
+    window.__v3611CloudRefreshWrapped=true;
+    window.cloudRefresh=async function(){
+      const savedNick=getSavedNick();
+      const result=await baseCloudRefresh.apply(this,arguments);
+      if(savedNick && Array.isArray(window.members) && window.members.some(m=>m[0]===savedNick)){
+        currentNick=savedNick;
+        try{localStorage.setItem('clanNick',savedNick);}catch(e){}
+        try{renderCurrent();}catch(e){}
+      }
+      return result;
+    };
+  }
+
+  /* 보안상 '베키라는 문자열'만으로 페이지 소유자가 되지 않도록 수정 */
+  window.isPageOwner=function(){
+    return !!(cloudUser && cloudOwnerId && cloudUser.id===cloudOwnerId);
+  };
+  window.canSiteEdit=function(){
+    return !!(cloudUser && cloudOwnerId && cloudUser.id===cloudOwnerId);
+  };
+
+  /* 로그인 직후 닉네임을 가장 먼저 확정 */
+  const oldLogin=window.loginDdu;
+  if(typeof oldLogin==='function' && !window.__v3611LoginWrapped){
+    window.__v3611LoginWrapped=true;
+    window.loginDdu=async function(){
+      const input=document.getElementById('loginNick');
+      const nick=input ? input.value.trim() : '';
+      if(nick) {
+        try{localStorage.setItem(LOGIN_KEY_V3611,JSON.stringify({nickname:nick,at:Date.now()}));}catch(e){}
+      }
+      return oldLogin.apply(this,arguments);
+    };
+  }
+
+  /* 초기 기본값으로 베키를 사용하지 않음 */
+  try{
+    if(localStorage.getItem('clanNick')==='베키' && !getSavedNick()){
+      localStorage.removeItem('clanNick');
+    }
+  }catch(e){}
+})();
+</script>
