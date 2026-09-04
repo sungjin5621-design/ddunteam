@@ -1984,3 +1984,102 @@ window.updateParticipantSummary=function(){
   };
 })();
 </script>
+
+
+<style id="v3634-bulk-add-fix">
+/* v36.34: 다중 추가 입력값 유지 + 행 추가 버튼 복구 */
+.bulk-row{min-height:48px}
+.bulk-row input,.bulk-row select,.bulk-row .bulk-weapon{font-size:14px;min-height:40px}
+.bulk-row .bulk-nick{font-weight:700}
+.bulk-add-row button{font-size:13px;padding:8px 11px}
+</style>
+<script>
+(function(){
+  let bulkDraft = null;
+  function captureBulkDraft(){
+    const rows=[...document.querySelectorAll('#bulkRows .bulk-row')];
+    return rows.map(row=>({
+      nickname: row.querySelector('.bulk-nick')?.value || '',
+      level: row.querySelector('.bulk-level')?.value || '90',
+      weapon: row.querySelector('.bulk-weapon')?.dataset.weapon || row.querySelector('.bulk-weapon')?.textContent.trim() || '모름',
+      role: row.querySelector('.bulk-role')?.value || '일반'
+    }));
+  }
+  function makeBulkRow(data={}){
+    const weapon=data.weapon || '모름';
+    const role=data.role || '일반';
+    return `<div class="bulk-row">
+      <input class="bulk-nick" placeholder="닉네임" value="${escapeHtml(data.nickname||'')}">
+      <input class="bulk-level" type="number" min="1" value="${escapeHtml(String(data.level||90))}">
+      <button type="button" class="weapon-choice bulk-weapon" data-weapon="${escapeHtml(weapon)}" onclick="openBulkWeaponPicker(this)">${escapeHtml(weapon)}</button>
+      <select class="bulk-role">${['일반','수호','관리자','군주'].map(r=>`<option ${r===role?'selected':''}>${r}</option>`).join('')}</select>
+      <button type="button" class="bulk-remove" onclick="this.parentElement.remove()">×</button>
+    </div>`;
+  }
+  function bindBulkAddButton(){
+    const btn=document.getElementById('bulkAddRowBtn');
+    if(!btn) return;
+    btn.onclick=()=>{
+      const rows=document.getElementById('bulkRows');
+      if(rows) rows.insertAdjacentHTML('beforeend',makeBulkRow());
+    };
+  }
+  window.openBulkMemberModal=function(){
+    if(!canClanManage()) return toast('혈맹원 관리는 페이지 소유자/군주만 가능합니다.');
+    bulkDraft=null;
+    openModal(`<div class="modal-head"><div><h3>혈맹원 다중 추가</h3><div class="admin-sub">여러 명을 한 번에 등록할 수 있습니다.</div></div><button class="close" onclick="closeModal()">×</button></div>
+      <div class="bulk-head"><span>닉네임</span><span>레벨</span><span>웨폰</span><span>등급</span><span></span></div>
+      <div id="bulkRows" class="bulk-table">${makeBulkRow()}</div>
+      <div class="bulk-add-row"><button id="bulkAddRowBtn" type="button">＋ 행 추가</button><span class="readonly-note">닉네임 중복은 저장 전에 검사합니다.</span></div>
+      <div class="modal-actions"><button onclick="closeModal()">취소</button><button class="primary" onclick="saveBulkMembers()">한 번에 저장</button></div>`,'wide');
+    bindBulkAddButton();
+  };
+  window.openBulkWeaponPicker=function(btn){
+    bulkDraft=captureBulkDraft();
+    window.bulkWeaponIndex=[...document.querySelectorAll('#bulkRows .bulk-row')].indexOf(btn.closest('.bulk-row'));
+    const current=btn.dataset.weapon || btn.textContent.trim() || '모름';
+    openModal(`<div class="modal-head"><h3>웨폰 선택</h3><button class="close" onclick="restoreBulkMemberModal()">×</button></div><div class="weapon-grid">${weaponNames.map(w=>`<button type="button" class="weapon-choice ${w===current?'active':''}" onclick="selectBulkWeapon('${escapeHtml(w)}')">${escapeHtml(w)}</button>`).join('')}</div>`);
+  };
+  window.restoreBulkMemberModal=function(){
+    const draft=bulkDraft || [{nickname:'',level:'90',weapon:'모름',role:'일반'}];
+    const idx=Number.isInteger(window.bulkWeaponIndex)?window.bulkWeaponIndex:-1;
+    if(idx>=0 && draft[idx]) draft[idx].weapon=draft[idx].weapon || '모름';
+    const modalEl=document.getElementById('modal');
+    if(!modalEl) return;
+    modalEl.className='modal wide';
+    modalEl.innerHTML=`<div class="modal-head"><div><h3>혈맹원 다중 추가</h3><div class="admin-sub">여러 명을 한 번에 등록할 수 있습니다.</div></div><button class="close" onclick="closeModal()">×</button></div>
+      <div class="bulk-head"><span>닉네임</span><span>레벨</span><span>웨폰</span><span>등급</span><span></span></div>
+      <div id="bulkRows" class="bulk-table">${draft.map(makeBulkRow).join('')}</div>
+      <div class="bulk-add-row"><button id="bulkAddRowBtn" type="button">＋ 행 추가</button><span class="readonly-note">닉네임 중복은 저장 전에 검사합니다.</span></div>
+      <div class="modal-actions"><button onclick="closeModal()">취소</button><button class="primary" onclick="saveBulkMembers()">한 번에 저장</button></div>`;
+    bindBulkAddButton();
+    bulkDraft=null;
+    window.bulkWeaponIndex=null;
+  };
+  window.selectBulkWeapon=function(w){
+    const idx=Number.isInteger(window.bulkWeaponIndex)?window.bulkWeaponIndex:-1;
+    const draft=captureBulkDraft();
+    if(idx>=0 && draft[idx]) draft[idx].weapon=w;
+    bulkDraft=draft;
+    restoreBulkMemberModal();
+  };
+  window.saveBulkMembers=async function(){
+    if(!canClanManage()) return toast('혈맹원 관리는 페이지 소유자/군주만 가능합니다.');
+    const rows=[...document.querySelectorAll('#bulkRows .bulk-row')], payloads=[], names=new Set(members.map(m=>m[0]));
+    for(const row of rows){
+      const n=row.querySelector('.bulk-nick').value.trim();
+      if(!n) continue;
+      if(names.has(n)||payloads.some(x=>x.nickname===n)) return toast('중복 닉네임이 있습니다: '+n);
+      if(n==='베키') return toast('베키는 다중 추가로 등록할 수 없습니다.');
+      payloads.push({clan_id:CLOUD_CLAN_ID,nickname:n,level:+row.querySelector('.bulk-level').value||0,weapon:row.querySelector('.bulk-weapon').dataset.weapon||row.querySelector('.bulk-weapon').textContent.trim()||'모름',role:row.querySelector('.bulk-role').value});
+    }
+    if(!payloads.length) return toast('추가할 혈맹원을 입력해주세요.');
+    const {error}=await cloudClient.from('clan_members').insert(payloads);
+    if(error) return cloudErr(error);
+    await cloudLoad();
+    renderAll();
+    closeModal();
+    toast(payloads.length+'명의 혈맹원을 추가했습니다.');
+  };
+})();
+</script>

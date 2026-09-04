@@ -1,11 +1,13 @@
-v36.32 - 혈맹원 삭제 RLS 권한 수정본
+# 뚠뚠팀 v36.34 다중 추가 수정
 
-증상:
-- 혈맹원 제거 후 "혈맹원 삭제 권한이 없거나 삭제된 데이터가 없습니다" 표시
-- Supabase에서 DELETE RLS 정책이 없어 실제 삭제가 0건으로 처리됨
+## 수정 내용
+- 다중 추가에서 닉네임/레벨 입력 후 웨폰 선택 시 입력값이 초기화되는 문제 수정
+- 웨폰 선택 후 `＋ 행 추가` 버튼이 먹통이 되는 문제 수정
+- 여러 행의 입력값을 유지하면서 웨폰 선택 가능
+- 다중 추가 저장 후 최신 혈맹원 목록을 즉시 다시 불러옴
+- 기존 권한/정렬/삭제 기능은 유지
 
-조치:
-- `supabase_delete_policy_fix.sql`을 Supabase SQL Editor에서 1회 실행
-- 페이지 소유자 / 군주 / 관리자 / 수호가 혈맹원 삭제 가능
-- 일반 혈맹원은 앱에서 삭제 기능을 사용할 수 없음
-- DELETE 권한과 반환 검증에 필요한 SELECT 권한을 함께 부여
+## Supabase
+`supabase_bulk_insert_policy_fix.sql`을 Supabase SQL Editor에서 1회 실행하세요.
+현재 로그인 구조가 Supabase Anonymous Auth를 사용하므로 authenticated 세션에 INSERT 권한이 필요합니다.
+앱 화면에서는 기존 `canClanManage()`로 운영진만 다중 추가 UI를 사용할 수 있습니다.
