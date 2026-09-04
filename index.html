@@ -173,7 +173,7 @@ let schedules=[
 {id:5,date:"2026-09-07",start:22,end:23,title:"공성전 - 기란성",count:"40명 / 40명"},
 {id:6,date:"2026-09-10",start:21,end:22,title:"던전 탐험",count:"15명 / 40명"}
 ];
-let currentNick=localStorage.getItem("clanNick")||"베키";
+let currentNick=localStorage.getItem("clanNick")||"설정 필요";
 let currentServer=localStorage.getItem("clanServer")||"바츠 03";
 let selectedMember=null,selectedMemberIds=new Set(),memberSelectionMode=false,noticeIndex=0,pendingImage="",clanMessage=localStorage.getItem("clanMessage")||"뚠뚠팀 혈맹 운영 페이지",memberNotes={};
 const APP_DATA_VERSION="v29";
@@ -328,7 +328,17 @@ async function loginDdu(){
   if(!cloudConfigured)return setLoginError('서버 설정이 완료되지 않았습니다.');
   const nick=document.getElementById('loginNick').value.trim(),pw=document.getElementById('loginPw').value;
   if(!nick)return setLoginError('닉네임을 입력해주세요.');
-  if(pw!=='1216')return setLoginError('비밀번호가 올바르지 않습니다.');
+
+  // 역할별 로그인 비밀번호
+  // 베키(소유자): 5621
+  // 군주/관리자/수호: 12161216
+  // 일반 혈맹원: 1216
+  const loginMember=members.find(m=>m[0]===nick);
+  if(!loginMember && nick!=='베키')return setLoginError('등록된 혈맹원 닉네임과 일치하지 않습니다.');
+  const role=(nick==='베키')?'페이지 소유자':(loginMember?loginMember[3]:'');
+  const requiredPassword=(nick==='베키')?'5621':(['군주','관리자','수호'].includes(role)?'12161216':'1216');
+  if(pw!==requiredPassword)return setLoginError('비밀번호가 올바르지 않습니다.');
+
   const btn=document.getElementById('loginSubmit');btn.disabled=true;setLoginError('접속 확인 중...');
   try{
     let {data:{session}}=await cloudClient.auth.getSession();
@@ -342,11 +352,10 @@ async function loginDdu(){
     if(!members.some(m=>m[0]===nick))throw new Error('등록된 혈맹원 닉네임과 일치하지 않습니다.');
 
     localStorage.setItem(LOGIN_KEY,JSON.stringify({nickname:nick,at:Date.now()}));
+    localStorage.setItem('clanNick',nick);
     currentNick=nick;
     cloudReady=true;
 
-    // 인증 성공과 화면 렌더링을 분리합니다. 화면의 특정 위젯 오류가
-    // 로그인 자체를 실패로 보이게 만들지 않도록 합니다.
     try{
       refreshOwnerControls();
       const ownerBtn=document.getElementById('ownerClaimBtn');if(ownerBtn)ownerBtn.style.display=cloudOwnerId?'none':'inline-grid';
@@ -1531,8 +1540,8 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
   };
 
   /* 로그인 직후 닉네임을 가장 먼저 확정 */
-  const oldLogin=window.loginDdu;
-  if(typeof oldLogin==='function' && !window.__v3611LoginWrapped){
+  const oldLogin=null;
+  if(false && typeof oldLogin==='function' && !window.__v3611LoginWrapped){
     window.__v3611LoginWrapped=true;
     window.loginDdu=async function(){
       const input=document.getElementById('loginNick');
