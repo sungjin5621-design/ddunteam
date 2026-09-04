@@ -1,7 +1,7 @@
-v36.22 final permissions/sort fix
-
-- Owner: edit + admin buttons always visible
-- Lord/Admin/Guard: edit only
-- General: no buttons
-- Member sorting: grade -> level desc -> rank asc -> nickname Korean order
-- Existing nickname readonly for non-owner, visible without blur; owner editable
+뚠뚠팀 v36.23 안정화 수정본
+- 혈맹원 목록 렌더링에서 window.members 대신 실제 members 배열 사용
+- 등급 > 레벨 내림차순 > 등수 오름차순 > 등수 없으면 닉네임 가나다순 유지
+- 페이지 소유자 베키: 수정 + 관리자 버튼
+- 군주/관리자/수호: 수정 버튼만
+- 일반: 버튼 없음
+- 기존 닉네임 잠금/웨폰 저장 기능 유지
