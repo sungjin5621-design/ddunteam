@@ -1,4 +1,7 @@
-뚠뚠팀 v36.20
-- 관리자 메뉴는 페이지 소유자 베키만 표시
-- 기존 혈맹원 닉네임은 소유자만 수정 가능
-- 기타 기능 유지
+v36.22 final permissions/sort fix
+
+- Owner: edit + admin buttons always visible
+- Lord/Admin/Guard: edit only
+- General: no buttons
+- Member sorting: grade -> level desc -> rank asc -> nickname Korean order
+- Existing nickname readonly for non-owner, visible without blur; owner editable

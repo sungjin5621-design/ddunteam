@@ -1695,3 +1695,120 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
   setTimeout(forceOwnerAdminVisibility,1000);
 })();
 </script>
+
+
+<!-- v36.22 final: owner/role header controls + member sort + nickname lock -->
+<style id="v3622-final-fix">
+.member-nick-owner-lock{
+  filter:none !important;
+  -webkit-filter:none !important;
+  opacity:1 !important;
+  color:inherit !important;
+  background:#090f16 !important;
+  cursor:not-allowed !important;
+  user-select:none !important;
+}
+</style>
+<script>
+(function(){
+  const ownerUI=()=>String(window.currentNick||currentNick||'')==='베키';
+  const roleUI=()=>{
+    const n=String(window.currentNick||currentNick||'');
+    if(n==='베키') return '페이지 소유자';
+    const m=Array.isArray(window.members)?window.members.find(x=>x&&x[0]===n):null;
+    return m?String(m[3]||''):'';
+  };
+  const opsUI=()=>ownerUI()||['군주','관리자','수호'].includes(roleUI());
+
+  function syncHeader(){
+    const edit=document.getElementById('categoryEditBtn');
+    const admin=document.getElementById('adminBtn');
+    if(edit) edit.style.display=opsUI()?'inline-block':'none';
+    if(admin) admin.style.display=ownerUI()?'inline-block':'none';
+  }
+  window.__v3622SyncHeader=syncHeader;
+
+  const oldRenderCurrent=window.renderCurrent;
+  window.renderCurrent=function(){
+    const r=oldRenderCurrent&&oldRenderCurrent.apply(this,arguments);
+    syncHeader();
+    return r;
+  };
+
+  // Any later render/cloud refresh must not revert the header permissions.
+  ['renderAll','cloudLoad','cloudRefresh','showPage'].forEach(fn=>{
+    const old=window[fn];
+    if(typeof old!=='function') return;
+    const key='__v3622_'+fn;
+    if(window[key]) return;
+    window[key]=true;
+    window[fn]=function(){
+      const args=arguments;
+      const result=old.apply(this,args);
+      if(result&&typeof result.then==='function') return result.finally(syncHeader);
+      syncHeader();
+      return result;
+    };
+  });
+
+  // Admin center itself is strictly page-owner only.
+  const oldAdmin=window.openAdminCenter;
+  if(typeof oldAdmin==='function'&&!window.__v3622AdminWrapped){
+    window.__v3622AdminWrapped=true;
+    window.openAdminCenter=function(){
+      if(!ownerUI()) return toast('관리자 센터는 페이지 소유자만 사용할 수 있습니다.');
+      return oldAdmin.apply(this,arguments);
+    };
+  }
+
+  // Final member-list ordering: grade -> level desc -> rank asc -> nickname 가나다순.
+  window.renderMembers=function(){
+    const q=(document.getElementById('memberSearch')?.value||'').trim().toLowerCase();
+    const el=document.getElementById('members');
+    if(!el||!Array.isArray(window.members)) return;
+    const ranks=typeof getRanks==='function'?getRanks():{};
+    const rankOrder={'페이지 소유자':0,'군주':1,'관리자':2,'수호':3,'일반':4};
+    const rows=window.members.map((m,i)=>({m,i,role:m[0]==='베키'?'페이지 소유자':String(m[3]||'일반'),meta:rankOrder[m[0]==='베키'?'페이지 소유자':String(m[3]||'일반')]??4,rankVal:(ranks[m[0]]!==undefined&&ranks[m[0]]!=='')?Number(ranks[m[0]]):null}))
+      .filter(x=>String(x.m[0]||'').toLowerCase().includes(q))
+      .sort((a,b)=>{
+        if(a.meta!==b.meta) return a.meta-b.meta;
+        const al=Number(a.m[1])||0, bl=Number(b.m[1])||0;
+        if(al!==bl) return bl-al;
+        if(a.rankVal!==null&&b.rankVal!==null&&a.rankVal!==b.rankVal) return a.rankVal-b.rankVal;
+        if(a.rankVal!==null&&b.rankVal===null) return -1;
+        if(a.rankVal===null&&b.rankVal!==null) return 1;
+        return String(a.m[0]||'').localeCompare(String(b.m[0]||''),'ko');
+      });
+    el.innerHTML='';
+    rows.forEach(x=>{
+      const m=x.m,i=x.i,selected=selectedMember===i;
+      const d=document.createElement('div');
+      d.className='member'+(selected?' active selected':'');
+      d.dataset.memberIndex=String(i);
+      d.onclick=e=>{if(e.target.closest('button'))return;e.preventDefault();e.stopPropagation();toggleMemberSelection(i)};
+      const cls=x.role==='페이지 소유자'?'rank-owner':x.role==='군주'?'rank-lord':x.role==='관리자'?'rank-admin':x.role==='수호'?'rank-guard':'rank-normal';
+      const removeBtn=selected&&typeof canClanManage==='function'&&canClanManage()&&m[0]!=='베키'?'<button class="mini danger member-remove" title="혈맹원 제거" onclick="event.stopPropagation();removeSelected('+i+')">×</button>':'';
+      const actions=typeof canClanManage==='function'&&canClanManage()?'<button class="mini" onclick="event.stopPropagation();openMemberModal('+i+')">수정</button><button class="mini" title="운영진 특이사항 보기" onclick="event.stopPropagation();openMemberNoteViewer('+i+')">🔍</button>':'';
+      d.innerHTML='<div class="avatar">'+escapeHtml(String(m[0]||'')[0]||'?')+'</div><div class="mtext"><div class="mname">'+escapeHtml(m[0])+' <span class="rank '+cls+'">'+escapeHtml(x.role)+'</span></div><div class="sub">Lv.'+(m[1]??'')+' · '+escapeHtml(m[2]||'모름')+'</div></div><div class="member-actions">'+actions+removeBtn+'</div>';
+      el.appendChild(d);
+    });
+    const count=document.getElementById('memberCount'); if(count) count.textContent=window.members.length+'명';
+  };
+
+  // Existing-member nickname: visible normally, readonly for non-owner. Owner can edit.
+  window.openMemberModal=function(i=null){
+    if(typeof canClanManage==='function'&&!canClanManage()) return toast('혈맹원 정보 수정은 페이지 소유자/군주/관리자만 가능합니다.');
+    const m=i===null?['',90,'모름','일반','','']:window.members[i];
+    if(i!==null&&!m) return toast('혈맹원을 찾을 수 없습니다.');
+    const ranks=typeof getRanks==='function'?getRanks():{};
+    const rankVal=ranks[m[0]]??'';
+    const selectedWeapon=m[2]||'모름';
+    const locked=i!==null&&!ownerUI();
+    const nickAttrs=locked?'readonly tabindex="-1" class="member-nick-owner-lock" title="페이지 소유자만 닉네임을 수정할 수 있습니다."':'';
+    openModal(`<div class="modal-head"><h3>${i===null?'혈맹원 추가':'혈맹원 프로필 수정'}</h3><button class="close" onclick="closeModal()">×</button></div><div class="form"><div class="row"><label>닉네임<input id="f0" value="${escapeHtml(m[0]||'')}" ${nickAttrs}></label><label>레벨<input id="f1" type="number" value="${m[1]||90}"></label></div><label>등수<input id="fRank" type="number" min="1" placeholder="등수 입력 (선택)" value="${escapeHtml(String(rankVal))}"></label><div class="picker-section"><div class="picker-title">웨폰</div><input id="f2" type="hidden" value="${escapeHtml(selectedWeapon)}"><div class="weapon-grid">${weaponNames.map(w=>`<button type="button" class="weapon-choice ${w===selectedWeapon?'active':''}" onclick="selectWeapon('${escapeHtml(w)}')">${escapeHtml(w)}</button>`).join('')}</div></div><label>등급<select id="f3">${['군주','관리자','수호','일반'].map(r=>`<option ${r===m[3]?'selected':''}>${r}</option>`).join('')}</select></label></div><div class="modal-actions"><button onclick="closeModal()">취소</button><button class="primary" onclick="saveMember(${i===null?'null':i})">저장</button></div>`,'small');
+  };
+
+  document.addEventListener('DOMContentLoaded',()=>{syncHeader();setTimeout(syncHeader,50);setTimeout(syncHeader,300);setTimeout(syncHeader,1000);try{renderMembers()}catch(e){}});
+  setInterval(syncHeader,1500);
+})();
+</script>
