@@ -194,7 +194,7 @@ function renderCurrent(){const r=isPageOwner()?"페이지 소유자":rankOf(curr
 function toggleNickEdit(){const s=document.getElementById("nickSetup");const i=document.getElementById("nickInput");s.style.display=s.style.display==="none"?"flex":"none";if(s.style.display!=="none"){i.value=currentNick==="설정 필요"?"":currentNick;i.focus()}}
 function setCurrentNick(){const n=document.getElementById("nickInput").value.trim();if(!n)return toast("닉네임을 입력해주세요.");if(!members.some(m=>m[0]===n))return toast("등록된 혈맹원 닉네임과 일치하지 않습니다.");currentNick=n;save();renderCurrent();renderNotices();toast(n+"님으로 설정했습니다.")}
 function rankMeta(m){const role=m[0]==="베키"?"페이지 소유자":m[3];const cls=role==="페이지 소유자"?"rank-owner":role==="군주"?"rank-lord":role==="관리자"?"rank-admin":role==="수호"?"rank-guard":"rank-normal";return {role,cls,order:role==="페이지 소유자"?0:role==="군주"?1:role==="관리자"?2:role==="수호"?3:4}}
-function renderMembers(){const q=document.getElementById("memberSearch").value.trim().toLowerCase();const el=document.getElementById("members");el.innerHTML="";members.map((m,i)=>({m,i,meta:rankMeta(m)})).filter(x=>x.m[0].toLowerCase().includes(q)).sort((a,b)=>a.meta.order-b.meta.order||a.m[0].localeCompare(b.m[0],"ko")).forEach(x=>{const m=x.m,i=x.i,meta=rankMeta(m),selected=selectedMember===i;const d=document.createElement("div");d.className="member"+(selected?" active selected":"");d.dataset.memberIndex=String(i);d.onclick=e=>{if(e.target.closest("button"))return;e.preventDefault();e.stopPropagation();toggleMemberSelection(i)};const removeBtn=selected&&canClanManage()&&m[0]!=="베키"?'<button class="mini danger member-remove" title="혈맹원 제거" onclick="event.stopPropagation();removeSelected('+i+')">×</button>':"";d.innerHTML='<div class="avatar">'+escapeHtml(m[0][0])+'</div><div class="mtext"><div class="mname">'+escapeHtml(m[0])+' <span class="rank '+meta.cls+'">'+meta.role+'</span></div><div class="sub">Lv.'+m[1]+' · '+escapeHtml(m[2])+'</div></div><div class="member-actions">'+(canClanManage()?'<button class="mini" onclick="event.stopPropagation();openMemberModal('+i+')">수정</button><button class="mini" title="운영진 특이사항 보기" onclick="event.stopPropagation();openMemberNoteViewer('+i+')">🔍</button>':'')+removeBtn+'</div>';el.appendChild(d)});document.getElementById("memberCount").textContent=members.length+"명"}
+function renderMembers(){const q=document.getElementById("memberSearch").value.trim().toLowerCase();const el=document.getElementById("members");el.innerHTML="";members.map((m,i)=>({m,i,meta:rankMeta(m)})).filter(x=>x.m[0].toLowerCase().includes(q)).sort((a,b)=>(Number(b.m[1])||0)-(Number(a.m[1])||0)||a.m[0].localeCompare(b.m[0],"ko")).forEach(x=>{const m=x.m,i=x.i,meta=rankMeta(m),selected=selectedMember===i;const d=document.createElement("div");d.className="member"+(selected?" active selected":"");d.dataset.memberIndex=String(i);d.onclick=e=>{if(e.target.closest("button"))return;e.preventDefault();e.stopPropagation();toggleMemberSelection(i)};const removeBtn=selected&&canClanManage()&&m[0]!=="베키"?'<button class="mini danger member-remove" title="혈맹원 제거" onclick="event.stopPropagation();removeSelected('+i+')">×</button>':"";d.innerHTML='<div class="avatar">'+escapeHtml(m[0][0])+'</div><div class="mtext"><div class="mname">'+escapeHtml(m[0])+' <span class="rank '+meta.cls+'">'+meta.role+'</span></div><div class="sub">Lv.'+m[1]+' · '+escapeHtml(m[2])+'</div></div><div class="member-actions">'+(canClanManage()?'<button class="mini" onclick="event.stopPropagation();openMemberModal('+i+')">수정</button><button class="mini" title="운영진 특이사항 보기" onclick="event.stopPropagation();openMemberNoteViewer('+i+')">🔍</button>':'')+removeBtn+'</div>';el.appendChild(d)});document.getElementById("memberCount").textContent=members.length+"명"}
 function memberKey(m,i){return String(m[4]||m[0]||i)}
 function toggleMemberSelection(i){if(!members[i])return;if(selectedMember===i){selectedMember=null}else{selectedMember=i;selectedMemberIds.clear();selectedMemberIds.add(memberKey(members[i],i))}renderMembers()}
 function clearMemberSelection(){if(selectedMember===null&&selectedMemberIds.size===0)return;selectedMember=null;selectedMemberIds.clear();renderMembers()}
@@ -373,7 +373,7 @@ async function loginDdu(){
     try{
       refreshOwnerControls();
       const ownerBtn=document.getElementById('ownerClaimBtn');if(ownerBtn)ownerBtn.style.display=cloudOwnerId?'none':'inline-grid';
-      const adminBtn=document.getElementById('adminBtn');if(adminBtn)adminBtn.style.display=canManage()?'inline-block':'none';
+      const adminBtn=document.getElementById('adminBtn');if(adminBtn)adminBtn.style.display=(String(currentNick||'')==='베키')?'inline-block':'none';
       const logoutBtn=document.getElementById('logoutBtn');if(logoutBtn)logoutBtn.style.display='inline-grid';
     }catch(uiSetupErr){console.error('UI setup error after login:',uiSetupErr);}
 
@@ -399,7 +399,7 @@ async function cloudInit(){
   const mine=members.find(m=>m[0]===saved.nickname);
   currentNick=mine?saved.nickname:'설정 필요';cloudReady=true;
   const ownerBtn=document.getElementById('ownerClaimBtn');if(ownerBtn)ownerBtn.style.display=cloudOwnerId?'none':'inline-grid';
-  const adminBtn=document.getElementById('adminBtn');if(adminBtn)adminBtn.style.display=canManage()?'inline-block':'none';
+  const adminBtn=document.getElementById('adminBtn');if(adminBtn)adminBtn.style.display=(String(currentNick||'')==='베키')?'inline-block':'none';
   const logoutBtn=document.getElementById('logoutBtn');if(logoutBtn)logoutBtn.style.display='inline-grid';
   showApp();cloudSubscribe();renderAll();
 }
@@ -1581,12 +1581,12 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
 
 <style id="v3617-owner-only-fix">
 /* v36.17: only page owner can see admin button; non-owner nickname is blurred/locked */
-.member-nick-owner-lock{filter:blur(5px);cursor:not-allowed!important;user-select:none;background:#090f16!important;}
+.member-nick-owner-lock{filter:none!important;cursor:not-allowed!important;user-select:none;background:#090f16!important;opacity:1!important;}
 </style>
 <script>
 /* v36.17 final overrides */
 (function(){
-  const pageOwnerOnly=()=>!!(window.cloudUser&&window.cloudOwnerId&&window.cloudUser.id===window.cloudOwnerId);
+  const pageOwnerOnly=()=>String(currentNick||'')==='베키';
   window.__v3617PageOwnerOnly=pageOwnerOnly;
 
   function syncAdminButton(){
@@ -1664,12 +1664,34 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
     const {error}=await q;
     if(error)return cloudErr(error);
     if(typeof saveRank==='function')saveRank(n,rank);
-    await cloudRefresh();
+    // 저장 직후 실제 Supabase 데이터를 다시 읽어 화면에도 즉시 반영한다.
+    // cloudRefresh()는 디바운스 방식이라 await해도 실제 조회 완료를 기다리지 않으므로,
+    // 여기서는 직접 cloudLoad()를 기다린 뒤 전체 UI를 다시 그린다.
+    await cloudLoad();
+    renderAll();
     closeModal();
     toast('혈맹원 정보가 저장되었습니다.');
   };
 
   document.addEventListener('DOMContentLoaded',syncAdminButton);
   setTimeout(syncAdminButton,0);
+})();
+</script>
+
+<style id="v3620-owner-admin-fix">
+/* v36.20: 관리자 버튼은 페이지 소유자(베키)에게만 노출 */
+</style>
+<script>
+(function(){
+  function forceOwnerAdminVisibility(){
+    const b=document.getElementById('adminBtn');
+    if(!b)return;
+    b.style.display=(String(window.currentNick||currentNick||'')==='베키')?'inline-block':'none';
+  }
+  window.__v3620ForceOwnerAdminVisibility=forceOwnerAdminVisibility;
+  document.addEventListener('DOMContentLoaded',forceOwnerAdminVisibility);
+  setTimeout(forceOwnerAdminVisibility,0);
+  setTimeout(forceOwnerAdminVisibility,300);
+  setTimeout(forceOwnerAdminVisibility,1000);
 })();
 </script>
