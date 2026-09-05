@@ -2366,98 +2366,135 @@ window.updateParticipantSummary=function(){
 </script>
 
 <script>
-/* v36.43: per-member current server for Member Management */
+/* v36.45: stable per-member server + server filter for Member Management */
 (function(){
   const MEMBER_SERVER_CACHE_KEY='ddunteam.memberServers';
-  function readMemberServerCache(){try{return JSON.parse(localStorage.getItem(MEMBER_SERVER_CACHE_KEY)||'{}')||{};}catch(e){return {};}}
-  function writeMemberServerCache(v){localStorage.setItem(MEMBER_SERVER_CACHE_KEY,JSON.stringify(v||{}));}
-  window.__memberServerCache=readMemberServerCache();
-  window.__memberServerFor=function(nick){
-    const n=String(nick||'');
-    return window.__memberServerCache[n] || currentServer || '바츠 03';
-  };
+  window.__memberServerCache = (()=>{try{return JSON.parse(localStorage.getItem(MEMBER_SERVER_CACHE_KEY)||'{}')||{};}catch(e){return {};}})();
+  function readCache(){return window.__memberServerCache||{};}
+  function writeCache(v){window.__memberServerCache=v||{};localStorage.setItem(MEMBER_SERVER_CACHE_KEY,JSON.stringify(window.__memberServerCache));}
+  window.__memberServerFor=function(nick){const n=String(nick||'');return readCache()[n] || currentServer || '바츠 03';};
+
   async function syncMemberServers(){
     if(typeof cloudReady==='undefined'||!cloudReady||!cloudClient)return;
     try{
       const {data,error}=await cloudClient.from('clan_members').select('id,nickname,current_server').eq('clan_id',CLOUD_CLAN_ID);
-      if(error) throw error;
-      const cache=readMemberServerCache();
-      (data||[]).forEach(x=>{ if(x.current_server) cache[String(x.nickname)]=x.current_server; else if(!cache[String(x.nickname)]) cache[String(x.nickname)]=currentServer||'바츠 03'; });
-      window.__memberServerCache=cache; writeMemberServerCache(cache);
-      if(document.querySelector('#tabs button.active')?.textContent.includes('인원 관리')) renderMembersPage();
+      if(error)throw error;
+      const cache=readCache();
+      (data||[]).forEach(x=>{cache[String(x.nickname)]=x.current_server||currentServer||'바츠 03';});
+      writeCache(cache);
+      // 여기서 renderMembersPage를 다시 호출하지 않는다. 기존 코드의 재귀 렌더링 문제를 방지한다.
     }catch(e){console.warn('member server sync failed',e);}
   }
+
   window.openMemberServerPicker=function(index){
-    if(!members[index])return toast('혈맹원을 찾을 수 없습니다.');
-    const nick=String(members[index][0]||'');
+    const target=members[index];
+    if(!target)return toast('혈맹원을 찾을 수 없습니다.');
+    const targetId=String(target[4]||'');
+    const nick=String(target[0]||'');
     let selected=window.__memberServerFor(nick);
     let currentWorld=selected.split(' ').slice(0,-1).join(' ');
-    if(!serverRegions.includes(currentWorld)) currentWorld=serverRegions[0];
+    if(!serverRegions.includes(currentWorld))currentWorld=serverRegions[0];
+    window.__memberServerTargetId=targetId;
+    window.__memberServerTargetNick=nick;
     window.__memberServerSelectedValue=selected;
-    window.__memberServerTargetIndex=index;
+
     window.__renderMemberServerButtons=function(world){
       return Array.from({length:10},(_,i)=>{
         const v=world+' '+String(i+1).padStart(2,'0');
-        return '<button type="button" class="server-choice '+(v===window.__memberServerSelectedValue?'active':'')+'" onclick="window.__pickMemberServer(\''+v.replace(/'/g,"\\'")+'\')">'+escapeHtml(v)+'</button>';
+        return '<button type="button" class="server-choice '+(v===window.__memberServerSelectedValue?'active':'')+'" data-server-value="'+escapeHtml(v)+'">'+escapeHtml(v)+'</button>';
       }).join('');
     };
     window.__pickMemberServer=function(v){
       window.__memberServerSelectedValue=v;
-      const hidden=document.getElementById('memberServerSelected'); if(hidden)hidden.value=v;
+      const hidden=document.getElementById('memberServerSelected');if(hidden)hidden.value=v;
       const world=v.split(' ').slice(0,-1).join(' ');
       document.querySelectorAll('#memberServerPicker .server-world-btn').forEach(b=>b.classList.toggle('active',b.dataset.world===world));
-      const list=document.getElementById('memberServerList'); if(list)list.innerHTML=window.__renderMemberServerButtons(world);
+      const list=document.getElementById('memberServerList');if(list)list.innerHTML=window.__renderMemberServerButtons(world);
+    };
+    window.__pickMemberWorld=function(world){
+      const list=document.getElementById('memberServerList');if(list)list.innerHTML=window.__renderMemberServerButtons(world);
+      document.querySelectorAll('#memberServerPicker .server-world-btn').forEach(b=>b.classList.toggle('active',b.dataset.world===world));
     };
     window.__saveMemberServer=async function(){
       if(!canClanManage())return toast('혈맹원 서버 변경 권한이 없습니다.');
-      const target=members[window.__memberServerTargetIndex]; if(!target)return toast('혈맹원을 찾을 수 없습니다.');
-      const id=target[4]; if(!id)return toast('혈맹원 ID를 확인할 수 없습니다.');
+      const id=String(window.__memberServerTargetId||'');
+      const targetNow=members.find(m=>String(m[4]||'')===id);
+      if(!targetNow)return toast('혈맹원을 찾을 수 없습니다.');
+      if(!id)return toast('혈맹원 ID를 확인할 수 없습니다.');
       const v=document.getElementById('memberServerSelected')?.value||window.__memberServerSelectedValue;
       if(!v)return toast('서버를 선택해주세요.');
-      const {error}=await cloudClient.from('clan_members').update({current_server:v}).eq('id',id);
+      const {error}=await cloudClient.from('clan_members').update({current_server:v}).eq('id',id).eq('clan_id',CLOUD_CLAN_ID);
       if(error)return cloudErr(error);
-      const cache=readMemberServerCache();cache[String(target[0])]=v;window.__memberServerCache=cache;writeMemberServerCache(cache);
-      closeModal();await cloudRefresh();renderMembersPage();toast(String(target[0])+'님의 현재 서버를 '+v+'로 변경했습니다.');
+      const cache=readCache();cache[String(targetNow[0])]=v;writeCache(cache);
+      closeModal();
+      await syncMemberServers();
+      if(typeof renderMembersPage==='function')renderMembersPage();
+      toast(String(targetNow[0])+'님의 현재 서버를 '+v+'로 변경했습니다.');
     };
-    openModal(`<div class="modal-head"><div><h3>서버 선택</h3><div class="admin-sub">${escapeHtml(nick)}님의 현재 서버를 선택해주세요.</div></div><button class="close" onclick="closeModal()">×</button></div><div id="memberServerPicker" class="picker-section"><div class="picker-title">월드</div><div class="server-world-grid">${serverRegions.map(w=>`<button type="button" data-world="${escapeHtml(w)}" class="server-world-btn ${w===currentWorld?'active':''}" onclick="window.__pickMemberWorld('${String(w).replace(/'/g,"\\'")}')">${escapeHtml(w)}</button>`).join('')}</div><div class="picker-title" style="margin-top:16px">서버</div><div id="memberServerList" class="server-list-grid">${window.__renderMemberServerButtons(currentWorld)}</div></div><input id="memberServerSelected" type="hidden" value="${escapeHtml(selected)}"><div class="modal-actions"><button onclick="closeModal()">취소</button><button class="primary" onclick="window.__saveMemberServer()">저장</button></div>`,'wide');
-    window.__pickMemberWorld=function(world){
-      const list=document.getElementById('memberServerList'); if(list)list.innerHTML=window.__renderMemberServerButtons(world);
-      document.querySelectorAll('#memberServerPicker .server-world-btn').forEach(b=>b.classList.toggle('active',b.dataset.world===world));
-    };
+    openModal('<div class="modal-head"><div><h3>서버 선택</h3><div class="admin-sub">'+escapeHtml(nick)+'님의 현재 서버를 선택해주세요.</div></div><button class="close" onclick="closeModal()">×</button></div><div id="memberServerPicker" class="picker-section"><div class="picker-title">월드</div><div class="server-world-grid">'+serverRegions.map(w=>'<button type="button" data-world="'+escapeHtml(w)+'" class="server-world-btn '+(w===currentWorld?'active':'')+'">'+escapeHtml(w)+'</button>').join('')+'</div><div class="picker-title" style="margin-top:16px">서버</div><div id="memberServerList" class="server-list-grid">'+window.__renderMemberServerButtons(currentWorld)+'</div></div><input id="memberServerSelected" type="hidden" value="'+escapeHtml(selected)+'"><div class="modal-actions"><button onclick="closeModal()">취소</button><button class="primary" onclick="window.__saveMemberServer()">저장</button></div>','wide');
+    document.querySelectorAll('#memberServerPicker .server-world-btn').forEach(b=>b.addEventListener('click',()=>window.__pickMemberWorld(b.dataset.world)));
+    document.querySelectorAll('#memberServerPicker .server-choice').forEach(b=>b.addEventListener('click',()=>window.__pickMemberServer(b.dataset.serverValue)));
   };
+
+  function sortForMemberPage(list){
+    const order={'페이지 소유자':0,'군주':1,'관리자':2,'수호':3,'일반':4};
+    const ranks=typeof getRanks==='function'?getRanks():{};
+    return list.filter(m=>+m[1]!==100).slice().sort((a,b)=>{
+      const ra=a[0]==='베키'?'페이지 소유자':(a[3]||'일반');
+      const rb=b[0]==='베키'?'페이지 소유자':(b[3]||'일반');
+      const oa=order[ra]??4,ob=order[rb]??4;
+      if(oa!==ob)return oa-ob;
+      const la=Number(a[1])||0,lb=Number(b[1])||0;
+      if(la!==lb)return lb-la;
+      const ar=Number(ranks[a[0]]),br=Number(ranks[b[0]]);
+      const ah=Number.isFinite(ar),bh=Number.isFinite(br);
+      if(ah&&bh&&ar!==br)return ar-br;
+      if(ah!==bh)return ah?-1:1;
+      return String(a[0]||'').localeCompare(String(b[0]||''),'ko');
+    });
+  }
+
+  window.__memberServerFilter=window.__memberServerFilter||'전체';
   const originalRender=window.renderMembersPage;
   window.renderMembersPage=function(){
-    if(typeof originalRender==='function') originalRender();
-    const extra=document.getElementById('extraPage'); if(!extra)return;
-    const table=extra.querySelector('.member-management-table'); if(!table)return;
+    if(typeof originalRender==='function')originalRender();
+    const extra=document.getElementById('extraPage');if(!extra)return;
+    const table=extra.querySelector('.member-management-table');if(!table)return;
     const header=table.querySelector('.mm-head');
-    if(header && header.children.length===7){
-      const span=document.createElement('span');span.textContent='현재 서버';header.insertBefore(span,header.children[3]);
+    if(header){
+      const labels=[...header.children].map(x=>x.textContent.trim());
+      if(!labels.includes('현재 서버')){const span=document.createElement('span');span.textContent='현재 서버';header.insertBefore(span,header.children[3]);}
     }
-    table.querySelectorAll('.mm-row').forEach((row,ri)=>{
-      const m=members.filter(m=>+m[1]!==100).sort((a,b)=>{
-        const order={'페이지 소유자':0,'군주':1,'관리자':2,'수호':3,'일반':4};
-        const ra=a[0]==='베키'?'페이지 소유자':(a[3]||'일반'), rb=b[0]==='베키'?'페이지 소유자':(b[3]||'일반');
-        if((order[ra]??4)!==(order[rb]??4))return (order[ra]??4)-(order[rb]??4);
-        if((+a[1]||0)!== (+b[1]||0))return (+b[1]||0)-(+a[1]||0);
-        const r=getRanks(); const av=Number(r[a[0]]),bv=Number(r[b[0]]);
-        if(Number.isFinite(av)&&Number.isFinite(bv)&&av!==bv)return av-bv;
-        if(Number.isFinite(av)!==Number.isFinite(bv))return Number.isFinite(av)?-1:1;
-        return String(a[0]).localeCompare(String(b[0]),'ko');
-      });
-      const target=m[ri]; if(!target)return;
+    let filter=extra.querySelector('#memberServerFilterBar');
+    if(filter)filter.remove();
+    filter=document.createElement('div');filter.id='memberServerFilterBar';filter.className='member-server-filter-bar';
+    const visibleMembers=sortForMemberPage(members);
+    const servers=[];const seen=new Set();
+    visibleMembers.forEach(m=>{const sv=window.__memberServerFor(m[0]);if(!seen.has(sv)){seen.add(sv);servers.push(sv);}});
+    const allBtn=document.createElement('button');allBtn.type='button';allBtn.className='server-filter-btn '+(window.__memberServerFilter==='전체'?'active':'');allBtn.textContent='전체 '+visibleMembers.length+'명';allBtn.onclick=()=>{window.__memberServerFilter='전체';window.renderMembersPage();};filter.appendChild(allBtn);
+    servers.forEach(sv=>{const b=document.createElement('button');b.type='button';b.className='server-filter-btn '+(window.__memberServerFilter===sv?'active':'');b.textContent=sv+' '+visibleMembers.filter(m=>window.__memberServerFor(m[0])===sv).length+'명';b.onclick=()=>{window.__memberServerFilter=sv;window.renderMembersPage();};filter.appendChild(b);});
+    table.parentElement.insertBefore(filter,table);
+
+    const rows=[...table.querySelectorAll('.mm-row')];
+    rows.forEach((row,ri)=>{
+      const target=visibleMembers[ri];if(!target){row.style.display='none';return;}
+      row.style.display=(window.__memberServerFilter==='전체'||window.__memberServerFor(target[0])===window.__memberServerFilter)?'grid':'none';
       const children=[...row.children];
-      if(children.length>=7){
-        const cell=document.createElement('button');cell.type='button';cell.className='member-server-cell';cell.textContent=window.__memberServerFor(target[0]);cell.title='클릭하여 서버 변경';cell.onclick=()=>openMemberServerPicker(members.indexOf(target));
-        row.insertBefore(cell,children[3]);
+      if(children.length>=7&&!row.querySelector('.member-server-cell')){
+        const cell=document.createElement('button');cell.type='button';cell.className='member-server-cell';cell.textContent=window.__memberServerFor(target[0]);cell.title='클릭하여 서버 변경';cell.onclick=()=>openMemberServerPicker(members.findIndex(m=>String(m[4]||'')===String(target[4]||'')));row.insertBefore(cell,children[3]);
       }
     });
     syncMemberServers();
   };
+
   const style=document.createElement('style');style.textContent=`
     .member-server-cell{width:100%;min-height:40px;padding:8px 12px;border:1px solid var(--border,#263241);border-radius:8px;background:#0b1119;color:#eef4ff;font-weight:700;cursor:pointer;text-align:center}
     .member-server-cell:hover{border-color:#4d83b8;background:#101b28}
     .member-management-table .mm-head,.member-management-table .mm-row{grid-template-columns:70px 1.1fr 100px 170px 1.35fr 1.35fr 110px 1.1fr!important}
+    .member-server-filter-bar{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 10px;padding:10px 0}
+    .server-filter-btn{border:1px solid var(--border,#263241);background:#0b1119;color:#c9d4e4;border-radius:8px;padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer}
+    .server-filter-btn:hover{border-color:#4d83b8;background:#101b28}
+    .server-filter-btn.active{border-color:#5b8fc5;background:#18304a;color:#fff;box-shadow:0 0 0 1px rgba(91,143,197,.25) inset}
   `;document.head.appendChild(style);
   syncMemberServers();
 })();
