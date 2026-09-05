@@ -2432,8 +2432,16 @@ window.updateParticipantSummary=function(){
       toast(String(targetNow[0])+'님의 현재 서버를 '+v+'로 변경했습니다.');
     };
     openModal('<div class="modal-head"><div><h3>서버 선택</h3><div class="admin-sub">'+escapeHtml(nick)+'님의 현재 서버를 선택해주세요.</div></div><button class="close" onclick="closeModal()">×</button></div><div id="memberServerPicker" class="picker-section"><div class="picker-title">월드</div><div class="server-world-grid">'+serverRegions.map(w=>'<button type="button" data-world="'+escapeHtml(w)+'" class="server-world-btn '+(w===currentWorld?'active':'')+'">'+escapeHtml(w)+'</button>').join('')+'</div><div class="picker-title" style="margin-top:16px">서버</div><div id="memberServerList" class="server-list-grid">'+window.__renderMemberServerButtons(currentWorld)+'</div></div><input id="memberServerSelected" type="hidden" value="'+escapeHtml(selected)+'"><div class="modal-actions"><button onclick="closeModal()">취소</button><button class="primary" onclick="window.__saveMemberServer()">저장</button></div>','wide');
-    document.querySelectorAll('#memberServerPicker .server-world-btn').forEach(b=>b.addEventListener('click',()=>window.__pickMemberWorld(b.dataset.world)));
-    document.querySelectorAll('#memberServerPicker .server-choice').forEach(b=>b.addEventListener('click',()=>window.__pickMemberServer(b.dataset.serverValue)));
+    // 이벤트 위임: 월드 선택으로 서버 버튼을 다시 그려도 클릭 이벤트가 유지되도록 한다.
+    const picker=document.getElementById('memberServerPicker');
+    if(picker){
+      picker.addEventListener('click',(ev)=>{
+        const worldBtn=ev.target.closest('.server-world-btn');
+        if(worldBtn){ window.__pickMemberWorld(worldBtn.dataset.world); return; }
+        const serverBtn=ev.target.closest('.server-choice');
+        if(serverBtn){ window.__pickMemberServer(serverBtn.dataset.serverValue); return; }
+      });
+    }
   };
 
   function sortForMemberPage(list){
