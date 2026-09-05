@@ -2391,27 +2391,39 @@ window.updateParticipantSummary=function(){
     if(!members[index])return toast('혈맹원을 찾을 수 없습니다.');
     const nick=String(members[index][0]||'');
     let selected=window.__memberServerFor(nick);
-    const currentWorld=selected.split(' ').slice(0,-1).join(' ');
-    const renderServers=(world)=>Array.from({length:10},(_,i)=>{
-      const v=world+' '+String(i+1).padStart(2,'0');
-      return `<button type="button" class="server-choice ${v===selected?'active':''}" onclick="window.__pickMemberServer('${String(v).replace(/'/g,"\\'")}')">${escapeHtml(v)}</button>`;
-    }).join('');
-    window.__pickMemberServer=async function(v){
-      selected=v;
-      document.querySelectorAll('#memberServerPicker .server-choice').forEach(b=>b.classList.toggle('active',b.textContent.trim()===v));
+    let currentWorld=selected.split(' ').slice(0,-1).join(' ');
+    if(!serverRegions.includes(currentWorld)) currentWorld=serverRegions[0];
+    window.__memberServerSelectedValue=selected;
+    window.__memberServerTargetIndex=index;
+    window.__renderMemberServerButtons=function(world){
+      return Array.from({length:10},(_,i)=>{
+        const v=world+' '+String(i+1).padStart(2,'0');
+        return '<button type="button" class="server-choice '+(v===window.__memberServerSelectedValue?'active':'')+'" onclick="window.__pickMemberServer(\''+v.replace(/'/g,"\\'")+'\')">'+escapeHtml(v)+'</button>';
+      }).join('');
+    };
+    window.__pickMemberServer=function(v){
+      window.__memberServerSelectedValue=v;
       const hidden=document.getElementById('memberServerSelected'); if(hidden)hidden.value=v;
+      const world=v.split(' ').slice(0,-1).join(' ');
+      document.querySelectorAll('#memberServerPicker .server-world-btn').forEach(b=>b.classList.toggle('active',b.dataset.world===world));
+      const list=document.getElementById('memberServerList'); if(list)list.innerHTML=window.__renderMemberServerButtons(world);
     };
     window.__saveMemberServer=async function(){
       if(!canClanManage())return toast('혈맹원 서버 변경 권한이 없습니다.');
-      const target=members[index]; if(!target)return toast('혈맹원을 찾을 수 없습니다.');
+      const target=members[window.__memberServerTargetIndex]; if(!target)return toast('혈맹원을 찾을 수 없습니다.');
       const id=target[4]; if(!id)return toast('혈맹원 ID를 확인할 수 없습니다.');
-      const v=document.getElementById('memberServerSelected')?.value||selected;
+      const v=document.getElementById('memberServerSelected')?.value||window.__memberServerSelectedValue;
+      if(!v)return toast('서버를 선택해주세요.');
       const {error}=await cloudClient.from('clan_members').update({current_server:v}).eq('id',id);
       if(error)return cloudErr(error);
-      const cache=readMemberServerCache();cache[nick]=v;window.__memberServerCache=cache;writeMemberServerCache(cache);
-      closeModal();renderMembersPage();toast(nick+'님의 현재 서버를 '+v+'로 변경했습니다.');
+      const cache=readMemberServerCache();cache[String(target[0])]=v;window.__memberServerCache=cache;writeMemberServerCache(cache);
+      closeModal();await cloudRefresh();renderMembersPage();toast(String(target[0])+'님의 현재 서버를 '+v+'로 변경했습니다.');
     };
-    openModal(`<div class="modal-head"><div><h3>서버 선택</h3><div class="admin-sub">${escapeHtml(nick)}님의 현재 서버를 선택해주세요.</div></div><button class="close" onclick="closeModal()">×</button></div><div id="memberServerPicker" class="picker-section"><div class="picker-title">월드</div><div class="server-world-grid">${serverRegions.map(w=>`<button type="button" class="server-world-btn ${w===currentWorld?'active':''}" onclick="document.querySelectorAll('#memberServerPicker .server-world-btn').forEach(b=>b.classList.toggle('active',b.textContent.trim()==='${w}'));document.getElementById('memberServerList').innerHTML=(${renderServers.toString()})('${w}')">${escapeHtml(w)}</button>`).join('')}</div><div class="picker-title" style="margin-top:16px">서버</div><div id="memberServerList" class="server-list-grid">${renderServers(currentWorld)}</div></div><input id="memberServerSelected" type="hidden" value="${escapeHtml(selected)}"><div class="modal-actions"><button onclick="closeModal()">취소</button><button class="primary" onclick="__saveMemberServer()">저장</button></div>`,'wide');
+    openModal(`<div class="modal-head"><div><h3>서버 선택</h3><div class="admin-sub">${escapeHtml(nick)}님의 현재 서버를 선택해주세요.</div></div><button class="close" onclick="closeModal()">×</button></div><div id="memberServerPicker" class="picker-section"><div class="picker-title">월드</div><div class="server-world-grid">${serverRegions.map(w=>`<button type="button" data-world="${escapeHtml(w)}" class="server-world-btn ${w===currentWorld?'active':''}" onclick="window.__pickMemberWorld('${String(w).replace(/'/g,"\\'")}')">${escapeHtml(w)}</button>`).join('')}</div><div class="picker-title" style="margin-top:16px">서버</div><div id="memberServerList" class="server-list-grid">${window.__renderMemberServerButtons(currentWorld)}</div></div><input id="memberServerSelected" type="hidden" value="${escapeHtml(selected)}"><div class="modal-actions"><button onclick="closeModal()">취소</button><button class="primary" onclick="window.__saveMemberServer()">저장</button></div>`,'wide');
+    window.__pickMemberWorld=function(world){
+      const list=document.getElementById('memberServerList'); if(list)list.innerHTML=window.__renderMemberServerButtons(world);
+      document.querySelectorAll('#memberServerPicker .server-world-btn').forEach(b=>b.classList.toggle('active',b.dataset.world===world));
+    };
   };
   const originalRender=window.renderMembersPage;
   window.renderMembersPage=function(){
