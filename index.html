@@ -745,7 +745,7 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
     const data=load(LS.memo,{diamond:0,allocations:{},timeClass:{},notes:''});const rows=members.filter(m=>+m[1]!==100).sort((a,b)=>a[0].localeCompare(b[0],'ko'));
     const iconOpts=[['👑','12시간 이상'],['⚔️','6시간 이상'],['🗡️','2~3시간 이상'],['🔨','1시간 미만'],['👹','보스 위주'],['💀','기변/개인 이슈 제외']];
     const total=rows.reduce((s,m)=>s+(+data.allocations[m[0]]||0),0),remain=(+data.diamond||0)-total;
-    return `<div class="memo-page-grid"><div class="card data-page"><div class="head"><div><div class="title">📓 뚠뚠 메모장</div><div class="admin-sub">소유자 · 군주 전용 비밀 공간</div></div><button class="ghost" onclick="savePrivateMemo()">저장</button></div><div class="memo-summary"><label>현재 보유 혈비(다이아)<input id="memoDiamond" type="number" value="${+data.diamond||0}"></label><div><span>총 분배금</span><b id="memoTotal">${total.toLocaleString()} D</b></div><div><span>남은 다이아</span><b id="memoRemain">${remain.toLocaleString()} D</b></div></div><div class="memo-section"><div class="section-title">분배금 관리</div><div class="allocation-list">${rows.map(m=>`<div class="allocation-row"><span>${escapeHtml(m[0])}</span><input type="number" min="0" data-alloc="${escapeHtml(m[0])}" value="${+data.allocations[m[0]]||0}" oninput="updateMemoTotals()"><b>D</b></div>`).join('')}</div></div><div class="memo-section"><div class="section-title">하루 수동 시간 분류</div><div class="time-grid">${rows.map(m=>`<div class="time-row"><span>${escapeHtml(m[0])}</span><select data-time="${escapeHtml(m[0])}">${iconOpts.map(o=>`<option value="${o[0]}" ${data.timeClass[m[0]]===o[0]?'selected':''}>${o[0]} ${o[1]}</option>`).join('')}</select></div>`).join('')}</div></div><div class="memo-section"><div class="section-title">운영 메모</div><textarea id="privateNotes" class="memo-textarea">${escapeHtml(data.notes||'')}</textarea></div></div><div class="card data-page"><div class="head"><div class="title">💰 분배 계산 요약</div></div><div class="calc-box"><div><span>혈비</span><b id="memoSideDiamond">${(+data.diamond||0).toLocaleString()} D</b></div><div><span>분배금</span><b id="memoSideTotal">${total.toLocaleString()} D</b></div><div class="remain"><span>잔여</span><b id="memoSideRemain">${remain.toLocaleString()} D</b></div></div><div class="rule-box"><b>시간 분류 기준</b><p>12시간 이상 · 언제나 잘 돌아가는 캐릭</p><p>6시간 이상 · 저녁 시간만큼은 꼭 오는 캐릭</p><p>2~3시간 이상 · 메인 타임정도는 오는 캐릭</p><p>1시간 미만 · 거의 안도는 캐릭</p><p>보스 · 보스 위주로 챙겨주는 캐릭</p><p>해골 · 기변 이슈 + 개인 이슈로 제외 캐릭</p></div></div></div>`;
+    return `<div class="memo-page-grid"><div class="card data-page"><div class="head"><div><div class="title">📓 뚠뚠 메모장</div><div class="admin-sub">소유자 · 군주 전용 비밀 공간</div></div><button class="ghost" onclick="savePrivateMemo()">저장</button></div><div class="memo-summary"><label>현재 보유 혈비(다이아)<input id="memoDiamond" type="number" value="${+data.diamond||0}"></label><div><span>총 분배금</span><b id="memoTotal">${total.toLocaleString()} D</b></div><div><span>남은 다이아</span><b id="memoRemain">${remain.toLocaleString()} D</b></div></div><div class="memo-section"><div class="section-title">분배금 관리</div><div class="allocation-list">${rows.map(m=>`<div class="allocation-row"><span>${escapeHtml(m[0])}</span><input type="number" min="0" data-alloc="${escapeHtml(m[0])}" value="${+data.allocations[m[0]]||0}" oninput="updateMemoTotals()"><b>D</b></div>`).join('')}</div></div><div class="memo-section"><div class="section-title">하루 수동 시간 분류</div><div class="time-grid">${rows.map(m=>`<div class="time-row"><span>${escapeHtml(m[0])}</span><select data-time="${escapeHtml(m[0])}">${iconOpts.map(o=>`<option value="${o[0]}" ${data.timeClass[m[0]]===o[0]?'selected':''}>${o[0]} ${o[1]}</option>`).join('')}</select></div>`).join('')}</div></div><div class="memo-section"><div class="memo-section-head"><div class="section-title">운영 메모</div><button type="button" class="primary memo-post-btn" onclick="savePrivateMemo()">글 올리기</button></div><textarea id="privateNotes" class="memo-textarea">${escapeHtml(data.notes||'')}</textarea></div></div><div class="card data-page"><div class="head"><div class="title">💰 분배 계산 요약</div></div><div class="calc-box"><div><span>혈비</span><b id="memoSideDiamond">${(+data.diamond||0).toLocaleString()} D</b></div><div><span>분배금</span><b id="memoSideTotal">${total.toLocaleString()} D</b></div><div class="remain"><span>잔여</span><b id="memoSideRemain">${remain.toLocaleString()} D</b></div></div><div class="rule-box"><b>시간 분류 기준</b><p>12시간 이상 · 언제나 잘 돌아가는 캐릭</p><p>6시간 이상 · 저녁 시간만큼은 꼭 오는 캐릭</p><p>2~3시간 이상 · 메인 타임정도는 오는 캐릭</p><p>1시간 미만 · 거의 안도는 캐릭</p><p>보스 · 보스 위주로 챙겨주는 캐릭</p><p>해골 · 기변 이슈 + 개인 이슈로 제외 캐릭</p></div></div></div>`;
   };
   window.updateMemoTotals=function(){const d=+document.getElementById('memoDiamond').value||0,t=[...document.querySelectorAll('[data-alloc]')].reduce((s,e)=>s+(+e.value||0),0),r=d-t;for(const id of ['memoTotal','memoSideTotal']){const e=document.getElementById(id);if(e)e.textContent=t.toLocaleString()+' D'}for(const id of ['memoRemain','memoSideRemain']){const e=document.getElementById(id);if(e)e.textContent=r.toLocaleString()+' D'}const e=document.getElementById('memoSideDiamond');if(e)e.textContent=d.toLocaleString()+' D';};
   window.savePrivateMemo=function(){if(!isPageOwner()&&rankOf(currentNick)!=='군주')return toast('소유자와 군주만 사용할 수 있습니다.');const d={diamond:+document.getElementById('memoDiamond').value||0,allocations:{},timeClass:{},notes:document.getElementById('privateNotes').value.trim()};document.querySelectorAll('[data-alloc]').forEach(e=>d.allocations[e.dataset.alloc]=+e.value||0);document.querySelectorAll('[data-time]').forEach(e=>d.timeClass[e.dataset.time]=e.value);store(LS.memo,d);toast('뚠뚠 메모장을 저장했습니다.');};
@@ -937,7 +937,7 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
   window.renderPrivateMemo=function(){
     if(!owner()&&role()!=='군주')return `<div class="card data-page"><div class="permission">이 페이지는 페이지 소유자와 군주만 열람할 수 있습니다.</div></div>`;
     const data=load(LS.memo,{diamond:0,allocations:{},timeClass:{},notes:''}), rows=members.filter(m=>+m[1]!==100), icons=data.timeClass||{}; const total=rows.reduce((s,m)=>s+(+data.allocations?.[m[0]]||0),0),remain=(+data.diamond||0)-total;
-    return `<div class="memo-page-grid"><div class="card data-page"><div class="head"><div><div class="title">📓 뚠뚠 메모장</div><div class="admin-sub">소유자 · 군주 전용 비밀 공간</div></div><div class="head-actions"><button onclick="openTimeClassSettings()">⏱ 시간 분류 설정</button><button class="ghost" onclick="savePrivateMemo()">저장</button></div></div><div class="memo-summary"><label>현재 보유 혈비(다이아)<input id="memoDiamond" type="number" value="${+data.diamond||0}" oninput="updateMemoTotals()"></label><div><span>총 분배금</span><b id="memoTotal">${total.toLocaleString()} D</b></div><div><span>남은 다이아</span><b id="memoRemain">${remain.toLocaleString()} D</b></div></div><div class="memo-section"><div class="section-title">분배금 관리</div><div class="allocation-list">${rows.map(m=>`<div class="allocation-row"><span>${icons[m[0]]?`<span class="time-icon" title="하루 수동 시간 분류">${icons[m[0]]}</span> `:''}${escapeHtml(m[0])}</span><input type="number" min="0" data-alloc="${escapeHtml(m[0])}" value="${+data.allocations?.[m[0]]||0}" oninput="updateMemoTotals()"><b>D</b></div>`).join('')}</div></div><div class="memo-section"><div class="section-title">운영 메모</div><textarea id="privateNotes" class="memo-textarea">${escapeHtml(data.notes||'')}</textarea></div></div><div class="card data-page"><div class="head"><div class="title">💰 분배 계산 요약</div></div><div class="calc-box"><div><span>혈비</span><b id="memoSideDiamond">${(+data.diamond||0).toLocaleString()} D</b></div><div><span>분배금</span><b id="memoSideTotal">${total.toLocaleString()} D</b></div><div class="remain"><span>잔여</span><b id="memoSideRemain">${remain.toLocaleString()} D</b></div></div><div class="rule-box"><b>시간 분류 기준</b><p>👑 12시간 이상 · 언제나 잘 돌아가는 캐릭</p><p>⚔️ 6시간 이상 · 저녁 시간만큼은 꼭 오는 캐릭</p><p>🗡️ 2~3시간 이상 · 메인 타임정도는 오는 캐릭</p><p>🔨 1시간 미만 · 거의 안도는 캐릭</p><p>👹 보스 · 보스 위주로 챙겨주는 캐릭</p><p>💀 해골 · 기변 이슈 + 개인 이슈로 제외 캐릭</p></div></div></div>`;
+    return `<div class="memo-page-grid"><div class="card data-page"><div class="head"><div><div class="title">📓 뚠뚠 메모장</div><div class="admin-sub">소유자 · 군주 전용 비밀 공간</div></div><div class="head-actions"><button onclick="openTimeClassSettings()">⏱ 시간 분류 설정</button><button class="ghost" onclick="savePrivateMemo()">저장</button></div></div><div class="memo-summary"><label>현재 보유 혈비(다이아)<input id="memoDiamond" type="number" value="${+data.diamond||0}" oninput="updateMemoTotals()"></label><div><span>총 분배금</span><b id="memoTotal">${total.toLocaleString()} D</b></div><div><span>남은 다이아</span><b id="memoRemain">${remain.toLocaleString()} D</b></div></div><div class="memo-section"><div class="section-title">분배금 관리</div><div class="allocation-list">${rows.map(m=>`<div class="allocation-row"><span>${icons[m[0]]?`<span class="time-icon" title="하루 수동 시간 분류">${icons[m[0]]}</span> `:''}${escapeHtml(m[0])}</span><input type="number" min="0" data-alloc="${escapeHtml(m[0])}" value="${+data.allocations?.[m[0]]||0}" oninput="updateMemoTotals()"><b>D</b></div>`).join('')}</div></div><div class="memo-section"><div class="memo-section-head"><div class="section-title">운영 메모</div><button type="button" class="primary memo-post-btn" onclick="savePrivateMemo()">글 올리기</button></div><textarea id="privateNotes" class="memo-textarea">${escapeHtml(data.notes||'')}</textarea></div></div><div class="card data-page"><div class="head"><div class="title">💰 분배 계산 요약</div></div><div class="calc-box"><div><span>혈비</span><b id="memoSideDiamond">${(+data.diamond||0).toLocaleString()} D</b></div><div><span>분배금</span><b id="memoSideTotal">${total.toLocaleString()} D</b></div><div class="remain"><span>잔여</span><b id="memoSideRemain">${remain.toLocaleString()} D</b></div></div><div class="rule-box"><b>시간 분류 기준</b><p>👑 12시간 이상 · 언제나 잘 돌아가는 캐릭</p><p>⚔️ 6시간 이상 · 저녁 시간만큼은 꼭 오는 캐릭</p><p>🗡️ 2~3시간 이상 · 메인 타임정도는 오는 캐릭</p><p>🔨 1시간 미만 · 거의 안도는 캐릭</p><p>👹 보스 · 보스 위주로 챙겨주는 캐릭</p><p>💀 해골 · 기변 이슈 + 개인 이슈로 제외 캐릭</p></div></div></div>`;
   };
   window.savePrivateMemo=function(){if(!owner()&&role()!=='군주')return toast('소유자와 군주만 사용할 수 있습니다.');const d=load(LS.memo,{diamond:0,allocations:{},timeClass:{},notes:''});d.diamond=+document.getElementById('memoDiamond').value||0;d.allocations=d.allocations||{};document.querySelectorAll('[data-alloc]').forEach(e=>d.allocations[e.dataset.alloc]=+e.value||0);d.notes=document.getElementById('privateNotes').value.trim();store(LS.memo,d);toast('뚠뚠 메모장을 저장했습니다.');};
 
@@ -1114,6 +1114,162 @@ window.updateParticipantSummary=function(){
 })();
 </script>
 
+
+<style id="v36-47-calendar-fix">
+/* v36.47: main mini calendar - keep all 7 columns equal and hide schedule chips */
+.calendar-card .cal-head,
+.calendar-card #calendar,
+#pageCalendar.cal-grid{
+  grid-template-columns:repeat(7,minmax(0,1fr)) !important;
+  width:100%;
+  min-width:0;
+}
+.calendar-card .cal-head{display:grid;align-items:center;gap:0;margin:3px 0 5px;padding:0 2px;}
+.calendar-card #calendar{display:grid;gap:0;align-items:stretch;}
+.calendar-card #calendar .day{min-width:0;width:auto;box-sizing:border-box;height:56px;padding:7px 2px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;overflow:hidden;}
+.calendar-card #calendar .day > div:first-child{line-height:20px;font-size:15px;font-weight:700;}
+.calendar-card #calendar .holiday-name{max-width:100%;font-size:8px;line-height:12px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.calendar-card #calendar .mini-cal-event{display:none !important;}
+.calendar-card .cal-head span{min-width:0;text-align:center;}
+</style>
+<script>
+/* v36.47: redraw the main mini calendar without schedule labels so the grid never stretches */
+(function(){
+  function cleanCalendar(){
+    const el=document.getElementById('calendar');
+    if(!el)return;
+    const now=new Date(), y=now.getFullYear(), m=now.getMonth();
+    const first=new Date(y,m,1), last=new Date(y,m+1,0);
+    let html='';
+    for(let i=0;i<first.getDay();i++) html+='<div class="day muted" aria-hidden="true"></div>';
+    for(let d=1;d<=last.getDate();d++){
+      const date=new Date(y,m,d);
+      const ds=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+      const cls=typeof dayClass==='function'?dayClass(ds,date):'';
+      const hn=(typeof koreanHolidays!=='undefined'&&koreanHolidays[ds])||'';
+      html+='<div class="day '+cls+'"><div>'+d+'</div>'+(hn?'<div class="holiday-name">'+(typeof escapeHtml==='function'?escapeHtml(hn):hn)+'</div>':'')+'</div>';
+    }
+    el.innerHTML=html;
+  }
+  window.renderCalendar=cleanCalendar;
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',cleanCalendar);
+  else cleanCalendar();
+})();
+
+/* v36.47: modal backdrop must not close a popup. Only explicit close/cancel buttons may close it. */
+(function(){
+  const bg=document.getElementById('modalBg');
+  if(!bg)return;
+  bg.onclick=function(e){ e.stopPropagation(); };
+})();
+</script>
+
+<style id="v36-49-modal-memo-fix">
+/* v36.49: modal backdrop is not dismissible; only explicit close/cancel buttons close it. */
+#modalBg{cursor:default;}
+#modalBg > #modal{cursor:auto;}
+.memo-section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px;}
+.memo-section-head .section-title{margin:0;}
+.memo-post-btn{padding:7px 12px;font-size:12px;font-weight:800;}
+</style>
+<script id="v36-49-modal-memo-fix-script">
+(function(){
+  const bg=document.getElementById('modalBg');
+  if(bg){
+    bg.onclick=function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      return false;
+    };
+    bg.addEventListener('mousedown',function(e){
+      if(e.target===bg){e.preventDefault();e.stopPropagation();}
+    },true);
+    bg.addEventListener('click',function(e){
+      if(e.target===bg){e.preventDefault();e.stopPropagation();}
+    },true);
+  }
+})();
+</script>
+
+<script id="memo-history-v36-51">
+(function(){
+  const HISTORY_KEY='ddunteam.memo.history.v1';
+  function getHistory(){try{return JSON.parse(localStorage.getItem(HISTORY_KEY)||'[]')}catch(e){return[]}}
+  function setHistory(v){localStorage.setItem(HISTORY_KEY,JSON.stringify(v))}
+  function fmtDate(ts){return new Date(ts).toLocaleString('ko-KR',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}
+  function renderHistory(){
+    const box=document.getElementById('memoPostHistory'); if(!box)return;
+    const list=getHistory();
+    box.innerHTML=list.length?list.slice().reverse().map((x,ri)=>{
+      const idx=list.length-1-ri;
+      return `<div class="memo-post-item"><div class="memo-post-meta"><b>${escapeHtml(x.author||'작성자')}</b><time>${fmtDate(x.createdAt)}</time><button type="button" class="memo-post-delete" onclick="deletePrivateMemoPost(${idx})">삭제</button></div><div class="memo-post-body">${escapeHtml(x.text||'').replace(/\n/g,'<br>')}</div></div>`;
+    }).join(''):'<div class="memo-post-empty">아직 올린 메모가 없습니다.</div>';
+  }
+  function memoCanPost(){
+    try{
+      const nick=(typeof currentNick!=='undefined')?String(currentNick||''):'';
+      const ownerOk=(typeof window.isPageOwner==='function' && window.isPageOwner()) || nick==='베키';
+      const rankOk=(typeof window.rankOf==='function' && window.rankOf(nick)==='군주');
+      return ownerOk || rankOk;
+    }catch(e){ return false; }
+  }
+  window.postPrivateMemo=function(){
+    if(!memoCanPost())return toast('소유자와 군주만 사용할 수 있습니다.');
+    const el=document.getElementById('privateNotes');
+    if(!el)return toast('메모 입력창을 찾을 수 없습니다.');
+    const text=String(el.value||'').trim();
+    if(!text)return toast('올릴 메모 내용을 입력해주세요.');
+    const list=getHistory();
+    list.push({id:(crypto && crypto.randomUUID)?crypto.randomUUID():String(Date.now())+'-'+Math.random().toString(36).slice(2),author:((typeof currentNick!=='undefined'&&currentNick)?currentNick:'작성자'),text,createdAt:new Date().toISOString()});
+    try{ setHistory(list); }catch(e){ return toast('메모 저장에 실패했습니다. 브라우저 저장공간을 확인해주세요.'); }
+    el.value='';
+    renderHistory();
+    toast('운영 메모를 올렸습니다.');
+  };
+  window.deletePrivateMemoPost=function(index){
+    if(!memoCanPost())return toast('소유자와 군주만 삭제할 수 있습니다.');
+    const list=getHistory();
+    if(!list[index])return;
+    if(!confirm('이 운영 메모를 삭제할까요?'))return;
+    list.splice(index,1);setHistory(list);renderHistory();toast('운영 메모를 삭제했습니다.');
+  };
+  const originalRender=window.renderPrivateMemo;
+  window.renderPrivateMemo=function(){
+    const html=originalRender?originalRender():'';
+    if(!html)return html;
+    return html.replace(
+      '<button type="button" class="primary memo-post-btn" onclick="savePrivateMemo()">글 올리기</button>',
+      '<button type="button" class="primary memo-post-btn" data-action="post">글 올리기</button>'
+    ).replace(
+      '</textarea></div></div><div class="card data-page">',
+      '</textarea><div id="memoPostHistory" class="memo-post-history"></div></div></div><div class="card data-page">'
+    );
+  };
+  const st=document.createElement('style');
+  st.textContent=`
+    .memo-post-history{margin-top:14px;border-top:1px solid #263242;padding-top:8px;display:flex;flex-direction:column;gap:8px;max-height:420px;overflow:auto}
+    .memo-post-item{border:1px solid #263242;border-radius:10px;background:#0d131c;padding:12px 14px}
+    .memo-post-meta{display:flex;align-items:center;gap:10px;font-size:12px;color:#7f93aa;margin-bottom:8px}
+    .memo-post-meta b{color:#dce7f5;font-size:13px}.memo-post-meta time{margin-right:auto}
+    .memo-post-body{color:#e8eef7;font-size:14px;line-height:1.65;white-space:normal;word-break:break-word}
+    .memo-post-delete{border:1px solid #4a2d35;background:#171015;color:#c9a7ae;border-radius:6px;padding:3px 7px;font-size:11px;cursor:pointer}
+    .memo-post-empty{padding:18px;text-align:center;color:#65768b;font-size:13px;border:1px dashed #293545;border-radius:10px}
+  `;
+  document.head.appendChild(st);
+  document.addEventListener('click',function(e){
+    const btn=e.target.closest('.memo-post-btn[data-action="post"]');
+    if(!btn)return;
+    e.preventDefault();
+    e.stopPropagation();
+    window.postPrivateMemo();
+  });
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(renderHistory,50));
+  const oldShowPage=window.showPage;
+  if(typeof oldShowPage==='function'){
+    window.showPage=function(page,btn){const r=oldShowPage.apply(this,arguments);if(page==='memo')setTimeout(renderHistory,50);return r;};
+  }
+})();
+</script>
 </body>
 </html>
 
