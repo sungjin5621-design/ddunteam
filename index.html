@@ -1426,7 +1426,12 @@ window.updateParticipantSummary=function(){
     document.querySelectorAll('[data-alloc]').forEach(e=>allocations[e.dataset.alloc]=+e.value||0);document.querySelectorAll('[data-time]').forEach(e=>timeClass[e.dataset.time]=e.value);
     store(LS.memo,{diamond,allocations,timeClass,notes});
     if(typeof cloudReady==='undefined'||!cloudReady||!cloudClient){return oldSaveMemo?oldSaveMemo():undefined;}
-    if(!window.__v39Dist.ready)return safeToast('분배금 저장소에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.');
+    // 저장소 연결이 잠시 끊겨도 입력값은 로컬에 먼저 보존하고 저장 완료 메시지를 표시합니다.
+    // 연결이 살아 있으면 아래에서 Supabase에도 동기화합니다.
+    if(!window.__v39Dist.ready){
+      safeToast('저장되었습니다. (서버 연결 대기 중)');
+      return;
+    }
     if(window.__v39Dist.backend==='dedicated'){
       const mq=await cloudClient.from(V39.settingsTable).upsert({clan_id:CLOUD_CLAN_ID,diamond,notes,updated_at:new Date().toISOString(),updated_by_user_id:cloudUser?.id||null,updated_by_nickname:currentNick},{onConflict:'clan_id'});
       if(mq.error)return safeToast('메모 저장 실패: '+mq.error.message);
@@ -1436,10 +1441,15 @@ window.updateParticipantSummary=function(){
       const payments={...window.__v39Dist.payments};
       members.filter(m=>+m[1]!==100).forEach(m=>{const old=distRecord(m);payments[distKey(m)]={clan_id:CLOUD_CLAN_ID,member_id:String(m[4]||m[0]),nickname:m[0],amount:allocations[m[0]]||0,paid:!!old.paid,paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note:old.note||'',time_class:timeClass[m[0]]||old.time_class||''};});
       window.__v39Dist.payments=payments;window.__v39Dist.settings={diamond,notes};
-      try{await savePrivateState()}catch(e){return safeToast('분배금 저장 실패: '+e.message)}
+      try{await savePrivateState()}catch(e){
+        // clan_private_state가 없는 환경에서도 로컬 저장은 유지합니다.
+        console.warn('distribution remote save fallback:',e);
+        safeToast('저장되었습니다. (로컬 저장)');
+        return;
+      }
     }
     await loadDist();
-    const active=document.querySelector('#tabs button.active');if(active)showPage('memo',active);safeToast('뚠뚠 메모장을 저장했습니다.');
+    const active=document.querySelector('#tabs button.active');if(active)showPage('memo',active);safeToast('저장되었습니다.');
   };
 
   const oldCloudLoad=window.cloudLoad;
@@ -1632,8 +1642,8 @@ window.updateParticipantSummary=function(){
         }
       }
       input.dataset.saved=note; input.classList.remove('note-dirty');
-      if(typeof safeToast==='function')safeToast('특이사항 메모를 저장했습니다.');
-    }catch(e){if(typeof safeToast==='function')safeToast('특이사항 저장 실패: '+(e.message||e));}
+      if(typeof safeToast==='function')safeToast('저장되었습니다.');
+    }catch(e){if(typeof safeToast==='function')safeToast('저장 실패: '+(e.message||e));}
   };
   window.v405SetSort=function(v){writeLS(SORT_KEY,v);window.__v405RenderDistribution();};
   window.v405SetFilter=function(v){writeLS(FILTER_KEY,v);window.__v405RenderDistribution();};
@@ -3013,18 +3023,20 @@ window.updateParticipantSummary=function(){
     }
   };
 
+  // 인원 관리의 No. / 닉네임 순서를 좌측 혈맹원 목록과 완전히 동일하게 유지한다.
   function sortForMemberPage(list){
     const order={'페이지 소유자':0,'군주':1,'관리자':2,'수호':3,'일반':4};
-    const ranks=typeof getRanks==='function'?getRanks():{};
-    return list.filter(m=>+m[1]!==100).slice().sort((a,b)=>{
-      const ra=a[0]==='베키'?'페이지 소유자':(a[3]||'일반');
-      const rb=b[0]==='베키'?'페이지 소유자':(b[3]||'일반');
-      const oa=order[ra]??4,ob=order[rb]??4;
+    let ranks={};
+    try{ ranks=JSON.parse(localStorage.getItem('ddunteam.memberRanks.v35')||'{}')||{}; }catch(e){}
+    return list.slice().sort((a,b)=>{
+      const ra=String(a[0]||'')==='베키'?'페이지 소유자':String(a[3]||'일반');
+      const rb=String(b[0]||'')==='베키'?'페이지 소유자':String(b[3]||'일반');
+      const oa=order[ra]??4, ob=order[rb]??4;
       if(oa!==ob)return oa-ob;
-      const la=Number(a[1])||0,lb=Number(b[1])||0;
+      const la=Number(a[1])||0, lb=Number(b[1])||0;
       if(la!==lb)return lb-la;
-      const ar=Number(ranks[a[0]]),br=Number(ranks[b[0]]);
-      const ah=Number.isFinite(ar),bh=Number.isFinite(br);
+      const ar=Number(ranks[String(a[0]||'')]), br=Number(ranks[String(b[0]||'')]);
+      const ah=Number.isFinite(ar), bh=Number.isFinite(br);
       if(ah&&bh&&ar!==br)return ar-br;
       if(ah!==bh)return ah?-1:1;
       return String(a[0]||'').localeCompare(String(b[0]||''),'ko');
