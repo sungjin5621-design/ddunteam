@@ -2057,6 +2057,227 @@ window.updateParticipantSummary=function(){
 })();
 </script>
 
+
+<script id="v406-real-supabase-persistence-final">
+(function(){
+  'use strict';
+  const STATE_TABLE='clan_private_state';
+  const STATE_KEY='distribution';
+  const LOCAL_KEY='ddunteam.distribution.persistence.v2';
+  const esc=v=>typeof escapeHtml==='function'?escapeHtml(String(v??'')):String(v??'');
+  const notify=msg=>{try{if(typeof toast==='function')toast(msg);else console.info(msg)}catch(e){console.info(msg)}};
+  const localRead=()=>{try{return JSON.parse(localStorage.getItem(LOCAL_KEY)||'null')||{payments:{},settings:{diamond:0,notes:''},history:[]}}catch(e){return {payments:{},settings:{diamond:0,notes:''},history:[]}}};
+  const localWrite=v=>{try{localStorage.setItem(LOCAL_KEY,JSON.stringify(v));return true}catch(e){return false}};
+  const membersList=()=>Array.isArray(window.members)?window.members.filter(m=>Number(m?.[1])!==100):[];
+  const memberKey=m=>String(m?.[4]??m?.[0]??'');
+  const findMember=k=>membersList().find(m=>memberKey(m)===String(k)||String(m?.[0]??'')===String(k));
+  const ordered=()=>{const base=membersList();try{return typeof window.getOrderedMembers==='function'?window.getOrderedMembers(base):base}catch(e){return base}};
+  const currentRec=m=>{try{return typeof window.v39DistributionRecord==='function'?(window.v39DistributionRecord(m)||{}):{}}catch(e){return {}}};
+  const normalizePayload=p=>{
+    p=p&&typeof p==='object'?p:{};
+    return {
+      version:2,
+      settings:Object.assign({diamond:0,notes:''},p.settings||{}),
+      payments:(p.payments&&typeof p.payments==='object'&&!Array.isArray(p.payments))?p.payments:{},
+      history:Array.isArray(p.history)?p.history:[]
+    };
+  };
+  let remotePayload=null;
+  async function loadRemote(){
+    if(typeof cloudReady==='undefined'||!cloudReady||!cloudClient||!cloudUser)return null;
+    try{
+      const r=await cloudClient.from(STATE_TABLE).select('state_key,payload').eq('clan_id',CLOUD_CLAN_ID).eq('state_key',STATE_KEY).maybeSingle();
+      if(r.error)throw r.error;
+      remotePayload=normalizePayload(r.data?.payload);
+      return r.data?.payload?remotePayload:null;
+    }catch(e){console.warn('distribution persistent load:',e);return null;}
+  }
+  function localPayload(){
+    const l=localRead();
+    const payments={...(l.payments||{})};
+    const settings=Object.assign({diamond:0,notes:''},l.settings||{});
+    // Migrate the old v40 local formats into the persistent v2 shape.
+    try{
+      const old=JSON.parse(localStorage.getItem((window.LS&&LS.memo)||'ddunteam.memo.v34')||'null')||{};
+      settings.diamond=Number(settings.diamond)||Number(old.diamond)||0;
+      if(!settings.notes)settings.notes=String(old.notes||'');
+      const alloc=old.allocations||{}, notes=old.distributionNotes||{};
+      ordered().forEach(m=>{
+        const k=memberKey(m),n=String(m[0]);
+        if(!payments[k] && (alloc[n]!==undefined||notes[n]!==undefined))payments[k]={member_id:k,nickname:n,amount:Number(alloc[n])||0,paid:false,note:String(notes[n]||''),time_class:''};
+      });
+    }catch(e){}
+    return {version:2,settings,payments,history:Array.isArray(l.history)?l.history:[]};
+  }
+  function applyPayload(p){
+    p=normalizePayload(p);
+    window.__v39Dist=window.__v39Dist||{payments:{},settings:{diamond:0,notes:''},ready:true,backend:'private'};
+    window.__v39Dist.ready=true;window.__v39Dist.backend='private';
+    window.__v39Dist.payments={...(p.payments||{})};
+    window.__v39Dist.settings=Object.assign({diamond:0,notes:''},p.settings||{});
+    const l=localRead();
+    l.settings=Object.assign({},l.settings||{},window.__v39Dist.settings);
+    l.payments={...(l.payments||{}),...(p.payments||{})};
+    l.history=Array.isArray(p.history)?p.history:[];
+    localWrite(l);
+    try{
+      const old=JSON.parse(localStorage.getItem((window.LS&&LS.memo)||'ddunteam.memo.v34')||'null')||{};
+      old.diamond=Number(p.settings?.diamond)||0;old.notes=String(p.settings?.notes||'');old.allocations=old.allocations||{};old.distributionNotes=old.distributionNotes||{};
+      Object.values(p.payments||{}).forEach(x=>{if(x?.nickname){old.allocations[x.nickname]=Number(x.amount)||0;old.distributionNotes[x.nickname]=String(x.note||'');}});
+      localStorage.setItem((window.LS&&LS.memo)||'ddunteam.memo.v34',JSON.stringify(old));
+    }catch(e){}
+  }
+  async function saveRemote(){
+    if(typeof cloudReady==='undefined'||!cloudReady||!cloudClient||!cloudUser)return false;
+    const payload=normalizePayload({settings:window.__v39Dist?.settings||{},payments:window.__v39Dist?.payments||{},history:localRead().history||[]});
+    try{
+      const r=await cloudClient.from(STATE_TABLE).upsert({clan_id:CLOUD_CLAN_ID,state_key:STATE_KEY,payload,updated_at:new Date().toISOString()},{onConflict:'clan_id,state_key'});
+      if(r.error)throw r.error;
+      remotePayload=payload;
+      return true;
+    }catch(e){console.warn('distribution persistent save:',e);return false;}
+  }
+  window.__v406LoadDistributionPersistent=async function(){
+    const remote=await loadRemote();
+    const local=localPayload();
+    if(remote){
+      // Server is authoritative once it contains actual distribution/history data.
+      const hasRemote=Object.keys(remote.payments||{}).length>0 || Number(remote.settings?.diamond||0)>0 || String(remote.settings?.notes||'') || (remote.history||[]).length>0;
+      if(hasRemote)applyPayload(remote); else applyPayload(local);
+    }else{
+      applyPayload(local);
+      // First migration: push existing local data to the shared state.
+      if(typeof cloudReady!=='undefined'&&cloudReady&&cloudClient&&cloudUser)await saveRemote();
+    }
+    return true;
+  };
+  window.__v406SaveDistributionPersistent=saveRemote;
+  window.__v406DistributionHistory=function(){return localRead().history||[]};
+
+  function persistLocalAndMemory(m,patch){
+    const key=memberKey(m), name=String(m?.[0]||'');
+    window.__v39Dist=window.__v39Dist||{payments:{},settings:{diamond:0,notes:''},ready:true,backend:'private'};
+    window.__v39Dist.payments=window.__v39Dist.payments||{};
+    const old=currentRec(m);
+    const rec=Object.assign({},old,patch,{clan_id:CLOUD_CLAN_ID,member_id:key,nickname:name});
+    window.__v39Dist.payments[key]=rec;
+    const l=localRead();l.payments=l.payments||{};l.payments[key]=rec;localWrite(l);
+    try{
+      const memo=JSON.parse(localStorage.getItem((window.LS&&LS.memo)||'ddunteam.memo.v34')||'null')||{diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}};
+      memo.allocations=memo.allocations||{};memo.distributionNotes=memo.distributionNotes||{};memo.allocations[name]=Number(rec.amount)||0;memo.distributionNotes[name]=String(rec.note||'');
+      localStorage.setItem((window.LS&&LS.memo)||'ddunteam.memo.v34',JSON.stringify(memo));
+    }catch(e){}
+  }
+
+  window.v39TogglePaid=async function(memberId){
+    try{
+      if(typeof canDist==='function'&&!canDist())return notify('소유자와 군주만 분배금을 관리할 수 있습니다.');
+      const m=findMember(memberId);if(!m)return notify('혈맹원을 찾을 수 없습니다.');
+      const old=currentRec(m), input=[...document.querySelectorAll('[data-alloc]')].find(e=>String(e.dataset.alloc)===String(m[0]));
+      const amount=Number(input?.value)||Number(old.amount)||0,paid=!Boolean(old.paid),now=new Date().toISOString();
+      persistLocalAndMemory(m,{amount,paid,paid_at:paid?now:null,paid_by_user_id:paid&&window.cloudUser?window.cloudUser.id:null,paid_by_nickname:paid?window.currentNick:null,note:String(old.note||''),time_class:String(old.time_class||'')});
+      notify(paid?'지급되었습니다.':'지급이 취소되었습니다.');
+      await saveRemote();
+      setTimeout(()=>{try{window.__v405RenderDistribution&&window.__v405RenderDistribution()}catch(e){}},0);
+    }catch(e){console.error('persistent payment:',e);notify('지급 처리 중 오류가 발생했습니다.');}
+  };
+
+  window.v405SaveInlineNote=async function(memberId,input){
+    try{
+      if(typeof canDist==='function'&&!canDist())return notify('소유자와 군주만 분배금을 관리할 수 있습니다.');
+      const m=findMember(memberId);if(!m||!input)return;
+      const old=currentRec(m),amount=Number(input.closest('.v405-row')?.querySelector('[data-alloc]')?.value)||Number(old.amount)||0,note=String(input.value||'').trim();
+      persistLocalAndMemory(m,{amount,note,paid:Boolean(old.paid),paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,time_class:String(old.time_class||'')});
+      input.dataset.saved=note;input.classList.remove('note-dirty');notify('저장되었습니다.');
+      await saveRemote();
+    }catch(e){console.error('persistent note:',e);notify('저장 중 오류가 발생했습니다.');}
+  };
+
+  window.savePrivateMemo=async function(){
+    try{
+      if(typeof canDist==='function'&&!canDist())return notify('소유자와 군주만 사용할 수 있습니다.');
+      const l=localRead(), d=window.__v39Dist?.settings||{};
+      d.diamond=Number(document.getElementById('memoDiamond')?.value)||0;
+      d.notes=String(document.getElementById('privateNotes')?.value||d.notes||'').trim();
+      window.__v39Dist.settings=d;
+      const memo=JSON.parse(localStorage.getItem((window.LS&&LS.memo)||'ddunteam.memo.v34')||'null')||{};
+      memo.diamond=d.diamond;memo.notes=d.notes;memo.allocations=memo.allocations||{};memo.distributionNotes=memo.distributionNotes||{};
+      document.querySelectorAll('[data-alloc]').forEach(e=>memo.allocations[e.dataset.alloc]=Number(e.value)||0);
+      document.querySelectorAll('[data-note-member]').forEach(e=>memo.distributionNotes[e.dataset.noteMember]=String(e.value||'').trim());
+      localStorage.setItem((window.LS&&LS.memo)||'ddunteam.memo.v34',JSON.stringify(memo));
+      l.settings=d;l.payments=window.__v39Dist.payments||{};localWrite(l);
+      notify('저장되었습니다.');
+      await saveRemote();
+      if(typeof window.__v405RenderDistribution==='function')window.__v405RenderDistribution();
+    }catch(e){console.error('persistent distribution save:',e);notify('저장 중 오류가 발생했습니다.');}
+  };
+
+  // Operating memo history: cafe-style posts with author/date/time, stored in Supabase.
+  function history(){return localRead().history||[]}
+  function renderHistory(){
+    const box=document.getElementById('v406OperatingMemoHistory');if(!box)return;
+    const list=history();
+    box.innerHTML=list.length?list.slice().reverse().map((x,ri)=>{
+      const idx=list.length-1-ri;
+      return `<div class="v406-history-item"><div class="v406-history-meta"><b>${esc(x.author||'작성자')}</b><time>${new Date(x.createdAt).toLocaleString('ko-KR',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</time><button type="button" onclick="v406DeleteOperatingMemo(${idx})">삭제</button></div><div class="v406-history-body">${esc(x.text||'').replace(/\n/g,'<br>')}</div></div>`;
+    }).join(''):'<div class="v406-history-empty">아직 작성된 운영 메모가 없습니다.</div>';
+  }
+  window.v406PostOperatingMemo=async function(){
+    if(typeof canDist==='function'&&!canDist())return notify('소유자와 군주만 사용할 수 있습니다.');
+    const el=document.getElementById('v406OperatingMemoText')||document.getElementById('privateNotes');if(!el)return;
+    const text=String(el.value||'').trim();if(!text)return notify('메모 내용을 입력해주세요.');
+    const l=localRead();l.history=l.history||[];l.history.push({id:(crypto&&crypto.randomUUID)?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2),author:String(window.currentNick||'작성자'),text,createdAt:new Date().toISOString()});
+    // Keep the latest text as the current memo too.
+    l.settings=l.settings||{};l.settings.notes=text;localWrite(l);
+    window.__v39Dist=window.__v39Dist||{payments:{},settings:{diamond:0,notes:''},ready:true,backend:'private'};window.__v39Dist.settings=Object.assign({},window.__v39Dist.settings||{},l.settings);
+    try{localStorage.setItem((window.LS&&LS.memo)||'ddunteam.memo.v34',JSON.stringify(Object.assign(JSON.parse(localStorage.getItem((window.LS&&LS.memo)||'ddunteam.memo.v34')||'{}'),{notes:text})))}catch(e){}
+    el.value='';renderHistory();notify('운영 메모가 저장되었습니다.');
+    await saveRemote();
+  };
+  window.v406DeleteOperatingMemo=async function(index){
+    if(typeof canDist==='function'&&!canDist())return notify('소유자와 군주만 사용할 수 있습니다.');
+    const l=localRead();if(!l.history?.[index])return;if(!confirm('이 운영 메모를 삭제할까요?'))return;l.history.splice(index,1);localWrite(l);renderHistory();notify('운영 메모를 삭제했습니다.');await saveRemote();
+  };
+  function ensureOperatingMemo(){
+    const main=document.querySelector('.v405-main');if(!main)return;
+    let sec=document.getElementById('v406OperatingMemo');
+    if(!sec){
+      sec=document.createElement('div');sec.className='memo-section';sec.id='v406OperatingMemo';
+      sec.innerHTML='<div class="memo-section-head"><div class="section-title">운영 메모</div><button type="button" class="primary" id="v406OperatingMemoPost">글 올리기</button></div><textarea id="v406OperatingMemoText" class="memo-textarea" placeholder="운영 메모를 입력하세요..."></textarea><div id="v406OperatingMemoHistory"></div>';
+      main.appendChild(sec);
+    }
+    const data=localRead();const ta=document.getElementById('v406OperatingMemoText');if(ta&&!ta.dataset.bound){ta.dataset.bound='1';ta.value='';}
+    const btn=document.getElementById('v406OperatingMemoPost');if(btn&&!btn.dataset.bound){btn.dataset.bound='1';btn.onclick=()=>window.v406PostOperatingMemo();}
+    renderHistory();
+  }
+  function restoreAfterRender(){setTimeout(()=>{ensureOperatingMemo();renderHistory();},20)}
+
+  // Wrap distribution renderer so operating memo is always present and persisted.
+  const oldRender=window.__v405RenderDistribution;
+  if(typeof oldRender==='function'){
+    window.__v405RenderDistribution=function(){const r=oldRender.apply(this,arguments);restoreAfterRender();return r;};
+  }
+  // Re-apply the shared state after every cloud refresh, preventing old fallback code from wiping paid flags.
+  const oldCloud=window.cloudLoad;
+  if(typeof oldCloud==='function'){
+    window.cloudLoad=async function(){const r=await oldCloud.apply(this,arguments);try{await window.__v406LoadDistributionPersistent();}catch(e){console.warn(e)};if(document.querySelector('#tabs button.active')?.getAttribute('onclick')?.includes("'memo'")){try{window.__v405RenderDistribution&&window.__v405RenderDistribution()}catch(e){}}return r;};
+  }
+  // Initial load and realtime updates.
+  const boot=async()=>{try{await window.__v406LoadDistributionPersistent();}catch(e){console.warn(e)};restoreAfterRender()};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,80);
+  try{
+    if(window.cloudClient&&window.cloudUser){window.cloudClient.channel('ddunteam-distribution-persistent-final').on('postgres_changes',{event:'*',schema:'public',table:STATE_TABLE,filter:'clan_id=eq.ddunteam'},async()=>{try{await window.__v406LoadDistributionPersistent();if(document.querySelector('#tabs button.active')?.getAttribute('onclick')?.includes("'memo'"))window.__v405RenderDistribution&&window.__v405RenderDistribution()}catch(e){console.warn(e)}}).subscribe();}
+  }catch(e){console.warn(e)}
+
+  const st=document.createElement('style');st.textContent=`
+    #v406OperatingMemo{margin-top:14px;padding:14px;border:1px solid #293642;background:#0a1017;border-radius:10px}
+    #v406OperatingMemoHistory{margin-top:14px;display:flex;flex-direction:column;gap:8px;max-height:520px;overflow:auto}
+    .v406-history-item{padding:12px 14px;border:1px solid #293642;background:#0d131b;border-radius:9px}
+    .v406-history-meta{display:flex;align-items:center;gap:10px;color:#7f93aa;font-size:11px;margin-bottom:7px}.v406-history-meta b{color:#dce7f5;font-size:12px}.v406-history-meta time{margin-right:auto}.v406-history-meta button{padding:3px 7px;font-size:10px;border:1px solid #4a2d35;background:#171015;color:#c9a7ae;border-radius:6px}
+    .v406-history-body{font-size:13px;line-height:1.65;color:#e8eef7;word-break:break-word}.v406-history-empty{padding:18px;text-align:center;color:#65768b;border:1px dashed #293545;border-radius:9px;font-size:12px}
+  `;document.head.appendChild(st);
+})();
+</script>
 </body>
 </html>
 
