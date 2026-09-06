@@ -238,7 +238,7 @@ function scheduleParticipants(s){if(Array.isArray(s?.participants))return s.part
 function scheduleCountLabel(s){const p=scheduleParticipants(s);return p.length?p.length+"명 참여":(s?.count||"")}
 function schedulePayloadCount(participants){return JSON.stringify({participants:participants||[]})}
 function renderNotices(){const sorted=[...notices].sort((a,b)=>((a.tag==="중요"?0:1)-(b.tag==="중요"?0:1))||(String(b.date).localeCompare(String(a.date))));const el=document.getElementById("noticeList");if(!el)return;el.innerHTML=sorted.slice(0,5).map(n=>{const i=notices.indexOf(n);return '<div class="notice" onclick="openNotice('+i+')"><span class="tag '+(n.tag==="중요"?"tag-important":"tag-new")+'">'+(n.tag||"NEW")+'</span><span class="nt">'+escapeHtml(n.title)+'</span><time>'+n.date+'</time>'+(canManage()?'<div class="notice-actions"><button class="mini" onclick="event.stopPropagation();openNoticeEditor('+i+')">수정</button><button class="mini danger" onclick="event.stopPropagation();deleteNotice('+i+')">삭제</button></div>':"")+'</div>'}).join("")}
-function renderToday(){const list=schedules.filter(s=>s.date===todayStr()).sort((a,b)=>a.start-b.start);document.getElementById("todayList").innerHTML=list.length?list.map(s=>`<div class="event" onclick="openScheduleEditor(${s.id})"><strong>${String(s.start).padStart(2,"0")}:00 ~ ${String(s.end).padStart(2,"0")}:00 · ${escapeHtml(s.title)}</strong><div class="count">${escapeHtml(scheduleCountLabel(s))}</div></div>`).join(""):'<div class="empty">오늘 예정된 일정이 없습니다.</div>'}
+function renderToday(){const list=schedules.filter(s=>s.date===todayStr()).sort((a,b)=>a.start-b.start);document.getElementById("todayList").innerHTML=list.length?list.map(s=>`<div class="event" onclick="openScheduleEditor(${s.id})"><strong>${String(s.start).padStart(2,"0")}:00 ~ ${String(s.end).padStart(2,"0")}:00 · ${escapeHtml(s.title)}</strong></div>`).join(""):'<div class="empty">오늘 예정된 일정이 없습니다.</div>'}
 
 function renderCalendar(){const now=new Date(),y=now.getFullYear(),m=now.getMonth(),first=new Date(y,m,1),last=new Date(y,m+1,0),el=document.getElementById("calendar");el.innerHTML="";for(let i=0;i<first.getDay();i++)el.innerHTML+='<div class="day muted"></div>';for(let d=1;d<=last.getDate();d++){const date=new Date(y,m,d),ds=y+"-"+String(m+1).padStart(2,"0")+"-"+String(d).padStart(2,"0"),hn=koreanHolidays[ds]||"";el.innerHTML+='<div class="day '+dayClass(ds,date)+'"><div>'+d+'</div>'+(hn?'<div style="font-size:9px;margin-top:2px">'+hn+'</div>':"")+'</div>'}}function renderLegend(){const counts={};members.forEach(m=>counts[m[2]]=(counts[m[2]]||0)+1);const total=members.length||1;const donut=document.querySelector(".donut");if(donut)donut.setAttribute("data-total","총 "+members.length+"명");document.getElementById("legend").innerHTML=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(([w,c])=>`<div class="legend-item" data-weapon="${escapeHtml(w)}" onclick="openWeaponMembers(this.dataset.weapon)"><b>${escapeHtml(w)}</b><span class="legend-count">${c}명 · ${(c/total*100).toFixed(1)}%</span></div>`).join("")}
 function openWeaponMembers(weapon){const list=members.filter(m=>m[2]===weapon);const rows=list.length?list.map(m=>'<div style="display:flex;justify-content:space-between;padding:11px;border-bottom:1px solid #25303b"><b>'+escapeHtml(m[0])+'</b><span class="sub">Lv.'+m[1]+' · '+escapeHtml(m[3])+'</span></div>').join(''):'<div class="empty">해당 혈맹원이 없습니다.</div>';openModal('<div class="modal-head"><div><h3>'+escapeHtml(weapon)+' 혈맹원</h3><div class="admin-sub">현재 혈맹원 중 해당 웨폰을 사용하는 인원</div></div><button class="close" onclick="closeModal()">×</button></div><div class="rank-table">'+rows+'</div>')}
@@ -320,6 +320,7 @@ function showPage(page,btn){
   else if(page==="schedule"){extra.innerHTML='<div class="card" style="min-height:760px"><div class="head"><div class="title">⚔ 리니지 일정표</div><button class="ghost" onclick="openSchedule()">주간 일정 관리</button></div><div class="permission">페이지 소유자 / 군주 / 수호는 전체 일정에서 1시간 단위로 일정을 추가·수정·삭제할 수 있습니다.</div></div>';}
   else if(page==="members"){extra.innerHTML='<div class="card" style="min-height:760px"><div class="head"><div class="title">♙ 인원 관리</div></div><div class="permission">좌측 혈맹원 목록에서 인원을 선택해 프로필과 운영진 특이사항을 관리할 수 있습니다.</div></div>';}
   else if(page==="minigame"){renderMiniGamesPage();}
+  else if(page==="memo"){if(typeof window.__v402RenderMemo==="function"){window.__v402RenderMemo();}else if(typeof renderPrivateMemo==="function"){extra.innerHTML=renderPrivateMemo();}}
   else {extra.innerHTML='<div class="card" style="min-height:760px"><div class="head"><div class="title">'+escapeHtml(btn.textContent)+'</div></div><p style="color:#8592a5">해당 메뉴의 세부 기능을 연결할 수 있는 영역입니다.</p></div>';}
 }
 function renderPageCalendar(){
@@ -801,7 +802,7 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
     banner.style.display='none';kpis.style.display='none';dashboard.style.display='none';extra.style.display='block';
     if(page==='letter')extra.innerHTML=renderLetters();
     else if(page==='members'){renderMembersPage();}
-    else if(page==='memo'){extra.innerHTML=renderPrivateMemo();}
+    else if(page==='memo'){if(typeof window.__v402RenderMemo==='function'){window.__v402RenderMemo();}else{extra.innerHTML=renderPrivateMemo();}}
     else if(page==='inventory'){extra.innerHTML=renderInventory();}
     else if(page==='items'){extra.innerHTML=renderItems();}
     else if(page==='minigame'){renderMiniGamesV368();}
@@ -1451,6 +1452,78 @@ window.updateParticipantSummary=function(){
   if(prev)window.cloudLoad=async function(){await prev.apply(this,arguments);await recover();};
 })();
 </script>
+
+<script id="v40-2-final-memo-fix">
+(function(){
+  'use strict';
+  const SORT_KEY='ddunteam.memo.v402.sort';
+  const FILTER_KEY='ddunteam.memo.v402.filter';
+  const readLS=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}};
+  const writeLS=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+  const esc=v=>typeof escapeHtml==='function'?escapeHtml(String(v??'')):String(v??'');
+  const rows=()=> (Array.isArray(members)?members:[]).filter(m=>Number(m?.[1])!==100);
+  const rankMap=()=> typeof getRanks==='function'?getRanks():{};
+  function sortedRows(){
+    const rs=rows().slice(), ranks=rankMap(), mode=readLS(SORT_KEY,'rank');
+    const roleOrder={'페이지 소유자':0,'군주':1,'관리자':2,'수호':3,'일반':4};
+    rs.sort((a,b)=>{
+      if(mode==='level') return (Number(b[1])||0)-(Number(a[1])||0)||String(a[0]).localeCompare(String(b[0]),'ko');
+      if(mode==='name') return String(a[0]).localeCompare(String(b[0]),'ko');
+      if(mode==='standard') {
+        const ra=roleOrder[a[0]==='베키'?'페이지 소유자':(a[3]||'일반')]??4;
+        const rb=roleOrder[b[0]==='베키'?'페이지 소유자':(b[3]||'일반')]??4;
+        return ra-rb||(Number(b[1])||0)-(Number(a[1])||0)||String(a[0]).localeCompare(String(b[0]),'ko');
+      }
+      const ar=Number(ranks[a[0]]),br=Number(ranks[b[0]]), ah=Number.isFinite(ar),bh=Number.isFinite(br);
+      return (ah&&bh?ar-br:ah?-1:bh?1:0)||((Number(b[1])||0)-(Number(a[1])||0))||String(a[0]).localeCompare(String(b[0]),'ko');
+    });
+    return rs;
+  }
+  function dist(m){
+    const id=String(m?.[4]??m?.[0]??''), name=String(m?.[0]??'');
+    const r=window.__v39Dist?.payments||{};
+    return r[id]||r[name]||{};
+  }
+  function canMemo(){return typeof canDist==='function'?canDist():(typeof isPageOwner==='function'&&isPageOwner())||(typeof rankOf==='function'&&rankOf(currentNick)==='군주');}
+  window.v402SetSort=function(v){writeLS(SORT_KEY,v);window.__v402RenderMemo();};
+  window.v402SetFilter=function(v){writeLS(FILTER_KEY,v);window.__v402RenderMemo();};
+  window.__v402RenderMemo=function(){
+    const extra=document.getElementById('extraPage'); if(!extra)return;
+    if(!canMemo()){extra.innerHTML='<div class="card data-page"><div class="permission">이 페이지는 페이지 소유자와 군주만 열람할 수 있습니다.</div></div>';return;}
+    const data=load(LS.memo,{diamond:0,allocations:{},timeClass:{},notes:''})||{};
+    const mode=readLS(SORT_KEY,'rank'), filter=readLS(FILTER_KEY,'all'), ranks=rankMap();
+    const all=sortedRows();
+    const filtered=all.filter(m=>filter==='paid'?!!dist(m).paid:filter==='todo'?!dist(m).paid:true);
+    const amount=m=>Number(data.allocations?.[m[0]])||Number(dist(m).amount)||0;
+    const total=all.reduce((s,m)=>s+amount(m),0), paidAll=all.filter(m=>!!dist(m).paid), paidAmount=paidAll.reduce((s,m)=>s+amount(m),0);
+    const visiblePaid=filtered.filter(m=>!!dist(m).paid);
+    const timeOpts=[['👑','12시간 이상'],['⚔️','6시간 이상'],['🗡️','2~3시간 이상'],['🔨','1시간 미만'],['👹','보스'],['💀','해골']];
+    const rankOfMember=m=>{const n=Number(ranks[m[0]]);return Number.isFinite(n)?n:null};
+    const alloc=filtered.map(m=>{
+      const r=dist(m), paid=!!r.paid, note=r.note||'', rk=rankOfMember(m), amt=amount(m);
+      return `<div class="v402-allocation ${paid?'paid':''}">
+        <div class="v402-member"><div class="v402-name"><b>${esc(m[0])}</b><span class="v402-status ${paid?'done':'todo'}">${paid?'🟢 지급완료':'🟡 미지급'}</span></div><div class="v402-meta">Lv.${esc(m[1])}${rk!==null?` · 랭킹 ${rk}`:''}</div>${note?`<div class="v402-note">📝 ${esc(note)}</div>`:''}</div>
+        <input type="number" min="0" data-alloc="${esc(m[0])}" value="${amt}" oninput="updateMemoTotals()"><b>D</b>
+        <button type="button" class="mini v402-pay" onclick="v39TogglePaid('${esc(String(m[4]??m[0]))}')">${paid?'지급취소':'지급'}</button>
+        <button type="button" class="mini v402-note-btn" onclick="v39EditNote('${esc(String(m[4]??m[0]))}')">📝</button>
+      </div>`;
+    }).join('')||'<div class="empty">조건에 맞는 혈맹원이 없습니다.</div>';
+    const sort=`<div class="v402-toolbar"><span>정렬</span><button class="${mode==='rank'?'active':''}" onclick="v402SetSort('rank')">⭐ 랭킹순</button><button class="${mode==='standard'?'active':''}" onclick="v402SetSort('standard')">기본순</button><button class="${mode==='level'?'active':''}" onclick="v402SetSort('level')">레벨순</button><button class="${mode==='name'?'active':''}" onclick="v402SetSort('name')">가나다순</button></div>`;
+    const status=`<div class="v402-toolbar"><span>상태</span><button class="${filter==='all'?'active':''}" onclick="v402SetFilter('all')">전체 ${all.length}</button><button class="${filter==='todo'?'active':''}" onclick="v402SetFilter('todo')">🟡 미지급 ${all.length-paidAll.length}</button><button class="${filter==='paid'?'active':''}" onclick="v402SetFilter('paid')">🟢 지급완료 ${paidAll.length}</button></div>`;
+    const timeRows=all.map(m=>{const cur=data.timeClass?.[m[0]]||'';return `<div class="time-row"><span>${esc(m[0])}</span><select data-time="${esc(m[0])}">${timeOpts.map(o=>`<option value="${esc(o[0]+' '+o[1])}" ${(cur===o[0]+' '+o[1])?'selected':''}>${o[0]} ${o[1]}</option>`).join('')}</select></div>`}).join('');
+    extra.innerHTML=`<div class="memo-page-grid"><div class="card data-page"><div class="head"><div><div class="title">📓 뚠뚠 메모장 <span class="v402-badge">v40.3</span></div><div class="admin-sub">소유자 · 군주 전용 비밀 공간</div></div><div class="head-actions"><button onclick="openTimeClassSettings()">⏱ 시간 분류 설정</button><button class="ghost" onclick="savePrivateMemo()">저장</button></div></div><div class="memo-summary"><label>현재 보유 혈비(다이아)<input id="memoDiamond" type="number" value="${Number(data.diamond)||0}" oninput="updateMemoTotals()"></label><div><span>총 분배금</span><b id="memoTotal">${total.toLocaleString()} D</b></div><div><span>남은 다이아</span><b id="memoRemain">${((Number(data.diamond)||0)-total).toLocaleString()} D</b></div></div><div class="memo-section"><div class="section-title">분배금 관리</div>${sort}${status}<div class="v402-summary"><span>🟢 지급완료 ${paidAll.length}명 · ${paidAmount.toLocaleString()} D</span><span>🟡 미지급 ${all.length-paidAll.length}명</span></div><div class="allocation-list v402-grid">${alloc}</div></div><div class="memo-section"><div class="section-title">하루 수동 시간 분류</div><div class="time-grid">${timeRows}</div></div><div class="memo-section"><div class="memo-section-head"><div class="section-title">운영 메모</div><button type="button" class="primary" onclick="savePrivateMemo()">글 올리기</button></div><textarea id="privateNotes" class="memo-textarea">${esc(data.notes||'')}</textarea></div></div><div class="card data-page"><div class="head"><div class="title">💰 분배 계산 요약</div></div><div class="calc-box"><div><span>혈비</span><b>${(Number(data.diamond)||0).toLocaleString()} D</b></div><div><span>분배금</span><b>${total.toLocaleString()} D</b></div><div class="remain"><span>잔여</span><b>${((Number(data.diamond)||0)-total).toLocaleString()} D</b></div><div><span>지급 완료</span><b>${paidAll.length}명</b></div><div><span>미지급 인원</span><b>${all.length-paidAll.length}명</b></div></div><div class="rule-box"><b>시간 분류 기준</b><p>👑 12시간 이상 · 언제나 잘 돌아가는 캐릭</p><p>⚔️ 6시간 이상 · 저녁 시간만큼은 꼭 오는 캐릭</p><p>🗡️ 2~3시간 이상 · 메인 타임정도는 오는 캐릭</p><p>🔨 1시간 미만 · 거의 안도는 캐릭</p><p>👹 보스 · 보스 위주로 챙겨주는 캐릭</p><p>💀 해골 · 기변 이슈 + 개인 이슈로 제외 캐릭</p></div></div></div>`;
+  };
+  // Critical fix: the original showPage closes over its lexical renderPrivateMemo. We explicitly repaint memo after routing.
+  const baseShow=window.showPage;
+  window.showPage=function(page,btn){const r=baseShow?baseShow.apply(this,arguments):undefined;if(page==='memo')setTimeout(()=>window.__v402RenderMemo(),0);return r;};
+  const st=document.createElement('style');st.textContent=`
+    .v402-badge{display:inline-block;margin-left:6px;padding:2px 5px;border:1px solid #3d6385;border-radius:5px;font-size:9px;color:#9dd7ff;vertical-align:middle}
+    .v402-toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0}.v402-toolbar>span{font-size:11px;color:#8290a3;font-weight:800;margin-right:3px}.v402-toolbar button{border:1px solid #2b3948;background:#0b1119;color:#cbd5e3;border-radius:7px;padding:6px 9px;font-size:11px;cursor:pointer}.v402-toolbar button.active{border-color:#5d8bb8;background:#183149;color:#fff}
+    .v402-summary{display:flex;gap:10px;flex-wrap:wrap;padding:8px 0;color:#9eabc0;font-size:11px}.v402-summary .done{color:#73e0a0}.v402-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:7px}.v402-allocation{display:grid;grid-template-columns:minmax(0,1fr) 90px 14px 52px 34px;gap:6px;align-items:center;padding:8px;border:1px solid #273341;border-radius:8px;background:#0b1119;min-width:0}.v402-allocation.paid{background:#0d1d15;border-color:#315b43}.v402-member{min-width:0}.v402-name{display:flex;align-items:center;gap:5px;min-width:0}.v402-name b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.v402-status{font-size:9px;padding:2px 5px;border-radius:5px;white-space:nowrap}.v402-status.done{background:#173b29;color:#72e0a0}.v402-status.todo{background:#3a2d0d;color:#ffd66b}.v402-meta{font-size:10px;color:#758399;margin-top:3px}.v402-note{font-size:9px;color:#8ea0b6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:3px}.v402-allocation input{width:100%;min-width:0;padding:7px;background:#090f16;color:#fff;border:1px solid #2d3947;border-radius:6px}.v402-pay,.v402-note-btn{padding:6px 7px!important;white-space:nowrap}.memo-section-head{display:flex;justify-content:space-between;align-items:center;gap:8px}.memo-section-head .section-title{margin-bottom:0}@media(max-width:900px){.v402-grid{grid-template-columns:1fr!important}.v402-allocation{grid-template-columns:minmax(0,1fr) 80px 12px 48px 32px}}
+  `;document.head.appendChild(st);
+})();
+</script>
+
 </body>
 </html>
 
@@ -2842,149 +2915,5 @@ window.updateParticipantSummary=function(){
     .server-filter-btn.active{border-color:#5b8fc5;background:#18304a;color:#fff;box-shadow:0 0 0 1px rgba(91,143,197,.25) inset}
   `;document.head.appendChild(style);
   syncMemberServers();
-})();
-</script>
-<!-- v40 memo distribution final: rank sort + paid/unpaid + member note, built on v36.53 stable -->
-<style id="v40-memo-distribution-css">
-  .v40-sortbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:0 0 10px;padding:8px 10px;border:1px solid #293440;border-radius:8px;background:#0b1119}
-  .v40-sortbar .label{font-size:11px;color:#8392a6;font-weight:800;margin-right:2px}
-  .v40-sort-btn{border:1px solid #2d3947;background:#101821;color:#aebbd0;border-radius:6px;padding:6px 9px;font-size:11px;font-weight:800;cursor:pointer}
-  .v40-sort-btn:hover,.v40-sort-btn.active{border-color:#5b8fc5;background:#18304a;color:#fff}
-  .v40-pay-summary{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px}
-  .v40-pay-summary span{padding:5px 8px;border:1px solid #293440;border-radius:6px;background:#0b1119;color:#aebbd0;font-size:10px;font-weight:800}
-  .v40-pay-summary .done{color:#72e0a0;border-color:#2d6845;background:#10251a}
-  .v40-pay-summary .todo{color:#ffd66b;border-color:#594916;background:#1b170b}
-  .v40-allocation-list{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px!important}
-  .v40-allocation-row{display:grid;grid-template-columns:minmax(0,1fr) 88px 16px 58px 34px;gap:5px;align-items:center;padding:7px 8px;border:1px solid #263241;border-radius:7px;background:#0d131b;min-width:0}
-  .v40-allocation-row.paid{background:#10251a;border-color:#2d6845}
-  .v40-member{min-width:0;overflow:hidden}
-  .v40-member-name{display:flex;align-items:center;gap:5px;min-width:0}
-  .v40-member-name b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .v40-member-meta{font-size:9px;color:#718197;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .v40-status{display:inline-flex;align-items:center;white-space:nowrap;font-size:9px;padding:2px 5px;border-radius:5px;font-weight:800}
-  .v40-status.done{background:#173b29;color:#72e0a0}.v40-status.todo{background:#3a2d0d;color:#ffd66b}
-  .v40-allocation-row input{width:100%;box-sizing:border-box;padding:7px;background:#090f16;color:#fff;border:1px solid #2d3947;border-radius:6px}
-  .v40-pay-btn,.v40-note-btn{padding:6px 6px!important;font-size:10px!important;white-space:nowrap}
-  .v40-note-preview{font-size:9px;color:#8ea0b6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-  @media(max-width:1100px){.v40-allocation-list{grid-template-columns:1fr!important}.v40-allocation-row{grid-template-columns:minmax(0,1fr) 82px 14px 58px 34px}}
-  @media(max-width:620px){.v40-allocation-row{grid-template-columns:minmax(0,1fr) 74px 14px 54px 32px}.v40-pay-btn,.v40-note-btn{padding:5px 4px!important}}
-</style>
-<script id="v40-memo-distribution-js">
-(function(){
-  'use strict';
-  const V={pay:'clan_distribution_payments',settings:'clan_distribution_settings',sort:'ddunteam.memo.distributionSort.v40',local:'ddunteam.memo.distributionLocal.v40'};
-  const fallback=()=>window._v35||{};
-  const loadLocal=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v??d}catch(e){return d}};
-  const saveLocal=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
-  const memoLS=()=>fallback().LS?.memo||'ddunteam.memo.v35';
-  const memoLoad=()=>fallback().load?fallback().load(memoLS(),{diamond:0,allocations:{},timeClass:{},notes:''}):loadLocal(memoLS(),{diamond:0,allocations:{},timeClass:{},notes:''});
-  const memoSave=d=>fallback().store?fallback().store(memoLS(),d):saveLocal(memoLS(),d);
-  const rankData=()=>{try{return typeof window.getRanks==='function'?window.getRanks():{};}catch(e){return {}}};
-  const roleOrder={'페이지 소유자':0,'군주':1,'관리자':2,'수호':3,'일반':4};
-  const roleOf=m=>String(m?.[0]||'')==='베키'?'페이지 소유자':String(m?.[3]||'일반');
-  const currentUser=()=>String(typeof currentNick!=='undefined'?currentNick:'');
-  const canManage=()=>currentUser()==='베키'||(typeof window.rankOf==='function'&&window.rankOf(currentUser())==='군주')||(typeof window.isPageOwner==='function'&&window.isPageOwner());
-  const memberRows=()=>Array.isArray(window.members)?window.members:[];
-  const memberId=m=>String(m?.[4]??m?.[0]??'');
-  const localDist=()=>loadLocal(V.local,{});
-  const setLocalDist=x=>saveLocal(V.local,x||{});
-  const localRec=m=>localDist()[memberId(m)]||localDist()[String(m?.[0]||'')]||{};
-  const sortMode=()=>loadLocal(V.sort,'rank');
-  function compare(a,b,mode){
-    const ranks=rankData();
-    const ar=(ranks[a[0]]!==undefined&&String(ranks[a[0]]).trim()!=='')?Number(ranks[a[0]]):null;
-    const br=(ranks[b[0]]!==undefined&&String(ranks[b[0]]).trim()!=='')?Number(ranks[b[0]]):null;
-    const ah=Number.isFinite(ar),bh=Number.isFinite(br);
-    if(mode==='rank'){
-      if(ah&&bh&&ar!==br)return ar-br;
-      if(ah!==bh)return ah?-1:1;
-      const ro=roleOrder[roleOf(a)]-roleOrder[roleOf(b)];if(ro)return ro;
-      const lv=(Number(b[1])||0)-(Number(a[1])||0);if(lv)return lv;
-    }else if(mode==='level'){
-      const lv=(Number(b[1])||0)-(Number(a[1])||0);if(lv)return lv;
-      const ro=roleOrder[roleOf(a)]-roleOrder[roleOf(b)];if(ro)return ro;
-      if(ah&&bh&&ar!==br)return ar-br;
-      if(ah!==bh)return ah?-1:1;
-    }else if(mode==='name'){
-      return String(a[0]||'').localeCompare(String(b[0]||''),'ko');
-    }else{
-      const ro=roleOrder[roleOf(a)]-roleOrder[roleOf(b)];if(ro)return ro;
-      const lv=(Number(b[1])||0)-(Number(a[1])||0);if(lv)return lv;
-      if(ah&&bh&&ar!==br)return ar-br;
-      if(ah!==bh)return ah?-1:1;
-    }
-    return String(a[0]||'').localeCompare(String(b[0]||''),'ko');
-  }
-  const sortedMembers=()=>memberRows().filter(m=>+m[1]!==100).slice().sort((a,b)=>compare(a,b,sortMode()));
-  function record(m,remote){return remote?.[memberId(m)]||remote?.[String(m?.[0]||'')]||localRec(m)||{amount:0,paid:false,note:'',time_class:''};}
-  function setLocalRecord(m,patch){const d=localDist();const k=memberId(m);d[k]={...(d[k]||{}),...patch,nickname:m[0]};setLocalDist(d)}
-  async function loadRemote(){
-    if(typeof cloudReady==='undefined'||!cloudReady||!window.cloudClient||!window.cloudUser)return {remote:null,settings:null,ready:false};
-    const [p,q]=await Promise.all([
-      cloudClient.from(V.pay).select('*').eq('clan_id',CLOUD_CLAN_ID),
-      cloudClient.from(V.settings).select('*').eq('clan_id',CLOUD_CLAN_ID).maybeSingle()
-    ]);
-    if(p.error){console.warn('v40 distribution:',p.error.message);return {remote:null,settings:null,ready:false,error:p.error};}
-    const remote=Object.fromEntries((p.data||[]).map(x=>[String(x.member_id||x.nickname),x]));
-    const settings=q.error?null:q.data;
-    const ld=localDist();(p.data||[]).forEach(x=>{const k=String(x.member_id||x.nickname);ld[k]={...(ld[k]||{}),nickname:x.nickname,amount:+x.amount||0,paid:!!x.paid,paid_at:x.paid_at||null,paid_by_nickname:x.paid_by_nickname||null,note:x.note||'',time_class:x.time_class||''};});setLocalDist(ld);
-    return {remote,settings,ready:true};
-  }
-  window.v40SetMemoSort=function(mode){saveLocal(V.sort,mode||'rank');if(typeof window.showPage==='function'){const b=document.querySelector('#tabs button.active');window.showPage('memo',b)}else if(typeof window.renderAll==='function')window.renderAll();};
-  async function savePayment(m,patch){
-    setLocalRecord(m,patch);
-    if(typeof cloudReady==='undefined'||!cloudReady||!window.cloudClient)return false;
-    const old=localRec(m);const payload={clan_id:CLOUD_CLAN_ID,member_id:memberId(m),nickname:m[0],amount:+(patch.amount??old.amount)||0,paid:patch.paid??!!old.paid,paid_at:patch.paid_at??old.paid_at??null,paid_by_user_id:patch.paid_by_user_id??old.paid_by_user_id??null,paid_by_nickname:patch.paid_by_nickname??old.paid_by_nickname??null,note:patch.note??old.note??'',time_class:patch.time_class??old.time_class??''};
-    const q=cloudClient.from(V.pay).upsert(payload,{onConflict:'clan_id,member_id'});const r=await q;if(r.error){console.warn('v40 payment save:',r.error.message);return false;}return true;
-  }
-  window.v40TogglePaid=async function(id){
-    if(!canManage())return toast('소유자와 군주만 분배금을 관리할 수 있습니다.');
-    const m=memberRows().find(x=>memberId(x)===String(id));if(!m)return;
-    const old=localRec(m),paid=!old.paid;
-    const input=[...document.querySelectorAll('[data-v40-alloc]')].find(x=>x.dataset.v40Alloc===String(m[0]));
-    const amount=+(input?.value??old.amount)||0;
-    setLocalRecord(m,{amount,paid,paid_at:paid?new Date().toISOString():null,paid_by_nickname:paid?currentUser():null,paid_by_user_id:paid&&cloudUser?cloudUser.id:null});
-    const ok=await savePayment(m,{amount,paid,paid_at:paid?new Date().toISOString():null,paid_by_nickname:paid?currentUser():null,paid_by_user_id:paid&&cloudUser?cloudUser.id:null});
-    if(!ok&&typeof cloudReady!=='undefined'&&cloudReady)return toast('지급 상태는 임시 저장됐지만 서버 저장에 실패했습니다.');
-    if(typeof window.showPage==='function')window.showPage('memo',document.querySelector('#tabs button.active'));
-    toast(paid?'지급 완료로 저장했습니다.':'미지급으로 변경했습니다.');
-  };
-  window.v40EditNote=function(id){
-    if(!canManage())return toast('소유자와 군주만 특이사항을 관리할 수 있습니다.');
-    const m=memberRows().find(x=>memberId(x)===String(id));if(!m)return;const old=localRec(m);
-    openModal(`<div class="modal-head"><div><h3>${escapeHtml(m[0])} 특이사항</h3><div class="admin-sub">분배금 관리용 개인 메모</div></div><button class="close" onclick="closeModal()">×</button></div><div class="form"><label>특이사항<textarea id="v40Note" style="min-height:150px">${escapeHtml(old.note||'')}</textarea></label></div><div class="modal-actions"><button onclick="closeModal()">취소</button><button class="primary" onclick="v40SaveNote('${escapeHtml(memberId(m))}')">저장</button></div>`,'small');
-  };
-  window.v40SaveNote=async function(id){
-    const m=memberRows().find(x=>memberId(x)===String(id));if(!m)return;const note=document.getElementById('v40Note')?.value.trim()||'';setLocalRecord(m,{note});
-    const ok=await savePayment(m,{note});if(!ok&&typeof cloudReady!=='undefined'&&cloudReady)return toast('특이사항은 임시 저장됐지만 서버 저장에 실패했습니다.');
-    closeModal();if(typeof window.showPage==='function')window.showPage('memo',document.querySelector('#tabs button.active'));toast('특이사항을 저장했습니다.');
-  };
-  const original=window.renderPrivateMemo;
-  window.renderPrivateMemo=function(){
-    const base=original?original():'';if(!base)return base;
-    const data=memoLoad(), rows=sortedMembers(), remote=(window.__v40Remote||{}),mode=sortMode();
-    const total=rows.reduce((s,m)=>s+(+data.allocations?.[m[0]]||+record(m,remote).amount||0),0);
-    const paid=rows.filter(m=>!!record(m,remote).paid),paidAmount=paid.reduce((s,m)=>s+(+data.allocations?.[m[0]]||+record(m,remote).amount||0),0);
-    const sortbar=`<div class="v40-sortbar"><span class="label">정렬</span><button class="v40-sort-btn ${mode==='rank'?'active':''}" onclick="v40SetMemoSort('rank')">랭킹순</button><button class="v40-sort-btn ${mode==='standard'?'active':''}" onclick="v40SetMemoSort('standard')">기본순</button><button class="v40-sort-btn ${mode==='level'?'active':''}" onclick="v40SetMemoSort('level')">레벨순</button><button class="v40-sort-btn ${mode==='name'?'active':''}" onclick="v40SetMemoSort('name')">가나다순</button></div>`;
-    const summary=`<div class="v40-pay-summary"><span class="done">🟢 지급완료 ${paid.length}명 · ${paidAmount.toLocaleString()} D</span><span class="todo">🟡 미지급 ${rows.length-paid.length}명</span></div>`;
-    const alloc=rows.map(m=>{const r=record(m,remote),amt=+data.allocations?.[m[0]]||+r.amount||0,ok=!!r.paid,note=r.note||'',rv=rankData()[m[0]];return `<div class="v40-allocation-row ${ok?'paid':''}"><div class="v40-member"><div class="v40-member-name"><b>${escapeHtml(m[0])}</b><span class="v40-status ${ok?'done':'todo'}">${ok?'🟢 지급완료':'🟡 미지급'}</span></div><div class="v40-member-meta">Lv.${escapeHtml(m[1])}${rv!==undefined&&String(rv)!==''?' · 랭킹 '+escapeHtml(String(rv)):''}</div>${note?`<div class="v40-note-preview">📝 ${escapeHtml(note)}</div>`:''}</div><input type="number" min="0" data-v40-alloc="${escapeHtml(m[0])}" data-alloc="${escapeHtml(m[0])}" value="${amt}" oninput="updateMemoTotals()"><b>D</b><button type="button" class="mini v40-pay-btn" onclick="v40TogglePaid('${escapeHtml(memberId(m))}')">${ok?'취소':'지급'}</button><button type="button" class="mini v40-note-btn" onclick="v40EditNote('${escapeHtml(memberId(m))}')">📝</button></div>`;}).join('');
-    const block=sortbar+summary+`<div class="allocation-list v40-allocation-list">${alloc}</div>`;
-    const start=base.indexOf('<div class="memo-section"><div class="section-title">분배금 관리</div>');
-    const end=base.indexOf('</div><div class="memo-section"><div class="section-title">하루 수동 시간 분류</div>',start);
-    if(start>=0&&end>=0)return base.slice(0,start)+`<div class="memo-section"><div class="section-title">분배금 관리</div>${block}</div>`+base.slice(end+6);
-    return base;
-  };
-  const originalSave=window.savePrivateMemo;
-  window.savePrivateMemo=async function(){
-    if(!canManage())return toast('소유자와 군주만 사용할 수 있습니다.');
-    const data=memoLoad();data.diamond=+document.getElementById('memoDiamond')?.value||0;data.notes=document.getElementById('privateNotes')?.value.trim()||data.notes||'';data.allocations=data.allocations||{};data.timeClass=data.timeClass||{};
-    document.querySelectorAll('[data-alloc]').forEach(e=>data.allocations[e.dataset.alloc]=+e.value||0);document.querySelectorAll('[data-time]').forEach(e=>data.timeClass[e.dataset.time]=e.value);memoSave(data);
-    let allOk=true;for(const m of memberRows().filter(x=>+x[1]!==100)){const r=localRec(m);const ok=await savePayment(m,{amount:+data.allocations[m[0]]||0,time_class:data.timeClass[m[0]]||r.time_class||''});if(!ok&&typeof cloudReady!=='undefined'&&cloudReady)allOk=false;}
-    if(typeof cloudReady!=='undefined'&&cloudReady&&window.cloudClient){const q=await cloudClient.from(V.settings).upsert({clan_id:CLOUD_CLAN_ID,diamond:data.diamond,notes:data.notes,updated_at:new Date().toISOString(),updated_by_user_id:cloudUser?.id||null,updated_by_nickname:currentUser()},{onConflict:'clan_id'});if(q.error)allOk=false;}
-    if(typeof window.showPage==='function')window.showPage('memo',document.querySelector('#tabs button.active'));toast(allOk?'뚠뚠 메모장을 저장했습니다.':'로컬 저장은 완료했지만 서버 저장에 실패한 항목이 있습니다.');
-  };
-  const oldLoad=window.cloudLoad;
-  if(oldLoad){window.cloudLoad=async function(){await oldLoad.apply(this,arguments);try{const r=await loadRemote();window.__v40Remote=r.remote||{};window.__v39Dist=window.__v39Dist||{};window.__v39Dist.ready=!!r.ready;window.__v39Dist.payments=r.remote||{};}catch(e){console.warn('v40 remote load',e)}};}
-  document.addEventListener('DOMContentLoaded',()=>setTimeout(async()=>{try{const r=await loadRemote();window.__v40Remote=r.remote||{};}catch(e){}},250));
 })();
 </script>
