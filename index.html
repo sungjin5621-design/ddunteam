@@ -1942,6 +1942,121 @@ window.updateParticipantSummary=function(){
   document.addEventListener('DOMContentLoaded',()=>{hydrate();wrapRender();});
 })();
 </script>
+
+<script id="v40.6-final-stability-fix">
+(function(){
+  'use strict';
+  const toastSafe=(msg)=>{try{if(typeof toast==='function')toast(msg);else console.log(msg);}catch(e){console.log(msg)}};
+  const read=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}};
+  const write=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}};
+  const memoKey=(typeof LS!=='undefined'&&LS.memo)||'ddunteam.memo.v34';
+  const memberList=()=>Array.isArray(window.members)?window.members.filter(m=>Number(m?.[1])!==100):[];
+  const ordered=()=>{const base=memberList();try{return typeof window.getOrderedMembers==='function'?window.getOrderedMembers(base):base}catch(e){return base}};
+  const distRec=(m)=>{try{return typeof window.v39DistributionRecord==='function'?(window.v39DistributionRecord(m)||{}):({})}catch(e){return {}}};
+  const findMember=(id)=>memberList().find(m=>String(m?.[4]??m?.[0])===String(id));
+
+  // Always persist the distribution state locally first. Remote sync is best-effort.
+  window.v406SaveDistributionLocal=function(){
+    const old=read(memoKey,{diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}})||{};
+    const data={diamond:Number(document.getElementById('memoDiamond')?.value)||0,allocations:{...(old.allocations||{})},timeClass:{...(old.timeClass||{})},notes:document.getElementById('privateNotes')?.value?.trim()??old.notes??'',distributionNotes:{...(old.distributionNotes||{})}};
+    document.querySelectorAll('[data-alloc]').forEach(e=>{data.allocations[e.dataset.alloc]=Number(e.value)||0});
+    document.querySelectorAll('[data-time]').forEach(e=>{data.timeClass[e.dataset.time]=e.value});
+    document.querySelectorAll('[data-note-member]').forEach(e=>{data.distributionNotes[e.dataset.noteMember]=e.value.trim()});
+    write(memoKey,data);return data;
+  };
+
+  // Override the main Save so it can never turn a successful local save into an error toast.
+  window.savePrivateMemo=function(){
+    if(typeof canDist==='function'&&!canDist()){toastSafe('소유자와 군주만 사용할 수 있습니다.');return;}
+    const data=v406SaveDistributionLocal();
+    try{
+      if(window.__v39Dist){
+        window.__v39Dist.settings=Object.assign({},window.__v39Dist.settings||{}, {diamond:data.diamond,notes:data.notes});
+        const ps=window.__v39Dist.payments||{};
+        ordered().forEach(m=>{const old=distRec(m),key=String(m?.[4]??m?.[0]);ps[key]=Object.assign({},old,{clan_id:window.CLOUD_CLAN_ID,member_id:key,nickname:m[0],amount:Number(data.allocations[m[0]])||0,note:data.distributionNotes[m[0]]||old.note||'',time_class:data.timeClass[m[0]]||old.time_class||'',paid:!!old.paid});});
+        window.__v39Dist.payments=ps;
+      }
+    }catch(e){console.warn('local distribution sync',e)}
+    toastSafe('저장되었습니다.');
+    // Remote persistence is intentionally non-blocking and cannot change the success UI.
+    try{
+      if(window.__v39Dist?.backend==='private'&&typeof savePrivateState==='function'&&window.cloudClient&&window.cloudUser){Promise.resolve(savePrivateState()).catch(e=>console.warn('remote distribution save',e));}
+    }catch(e){console.warn(e)}
+  };
+
+  // Payment toggle: local state first, then optional remote sync.
+  window.v406TogglePaid=function(memberId){
+    const m=findMember(memberId);if(!m){toastSafe('혈맹원을 찾을 수 없습니다.');return;}
+    const old=distRec(m), paid=!old.paid;
+    const row=[...document.querySelectorAll('.v405-row')].find(x=>x.querySelector('[data-alloc]')?.dataset.alloc===String(m[0]));
+    const amount=Number(row?.querySelector('[data-alloc]')?.value)||Number(old.amount)||0;
+    const key=String(m?.[4]??m?.[0]);
+    const payload=Object.assign({},old,{clan_id:window.CLOUD_CLAN_ID,member_id:key,nickname:m[0],amount,paid,paid_at:paid?new Date().toISOString():null,paid_by_user_id:paid&&window.cloudUser?window.cloudUser.id:null,paid_by_nickname:paid?(window.currentNick||''):null,note:old.note||'',time_class:old.time_class||''});
+    try{
+      window.__v39Dist=window.__v39Dist||{payments:{},settings:{}};window.__v39Dist.payments=window.__v39Dist.payments||{};window.__v39Dist.payments[key]=payload;
+      const data=read(memoKey,{diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}})||{};data.allocations=data.allocations||{};data.allocations[m[0]]=amount;write(memoKey,data);
+      toastSafe(paid?'지급되었습니다.':'지급이 취소되었습니다.');
+      // Do not await remote persistence.
+      if(window.__v39Dist.backend==='dedicated'&&window.cloudClient&&window.cloudUser){Promise.resolve(window.cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'})).catch(e=>console.warn(e));}
+      else if(window.__v39Dist.backend==='private'&&typeof savePrivateState==='function'&&window.cloudClient&&window.cloudUser){Promise.resolve(savePrivateState()).catch(e=>console.warn(e));}
+      setTimeout(()=>{try{window.__v405RenderDistribution?.()}catch(e){}},0);
+    }catch(e){console.error(e);toastSafe('지급 처리 중 오류가 발생했습니다.');}
+  };
+  window.v39TogglePaid=window.v406TogglePaid;
+
+  // Inline special-note save: immediate local persistence + success toast.
+  window.v406SaveInlineNote=function(memberId,input){
+    const m=findMember(memberId);if(!m||!input)return;
+    const note=String(input.value||'').trim();
+    const old=distRec(m), key=String(m?.[4]??m?.[0]);
+    const amount=Number(input.closest('.v405-row')?.querySelector('[data-alloc]')?.value)||Number(old.amount)||0;
+    const payload=Object.assign({},old,{clan_id:window.CLOUD_CLAN_ID,member_id:key,nickname:m[0],amount,note,paid:!!old.paid,time_class:old.time_class||''});
+    window.__v39Dist=window.__v39Dist||{payments:{},settings:{}};window.__v39Dist.payments=window.__v39Dist.payments||{};window.__v39Dist.payments[key]=payload;
+    const data=read(memoKey,{diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}})||{};data.allocations=data.allocations||{};data.distributionNotes=data.distributionNotes||{};data.allocations[m[0]]=amount;data.distributionNotes[m[0]]=note;write(memoKey,data);
+    input.dataset.saved=note;input.classList.remove('note-dirty');toastSafe('저장되었습니다.');
+    try{if(window.__v39Dist.backend==='dedicated'&&window.cloudClient&&window.cloudUser)Promise.resolve(window.cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'})).catch(e=>console.warn(e));else if(window.__v39Dist.backend==='private'&&typeof savePrivateState==='function'&&window.cloudClient&&window.cloudUser)Promise.resolve(savePrivateState()).catch(e=>console.warn(e));}catch(e){console.warn(e)}
+  };
+
+  // Re-render the distribution page with the same order as the member-management list.
+  const baseDist=window.__v405RenderDistribution;
+  if(typeof baseDist==='function'){
+    const original=baseDist;
+    window.__v405RenderDistribution=function(){original();
+      // Preserve the inline note values after rendering.
+      document.querySelectorAll('.v405-note').forEach(el=>{if(el.dataset.saved==null)el.dataset.saved=el.value.trim();});
+    };
+  }
+
+  // Restore the operating memo below the distribution table if a layout omitted it.
+  function ensureOperatingMemo(){
+    const main=document.querySelector('.v405-main');if(!main||main.querySelector('#v406OperatingMemo'))return;
+    const data=read(memoKey,{notes:''})||{};
+    const sec=document.createElement('div');sec.className='memo-section';sec.id='v406OperatingMemo';sec.innerHTML='<div class="memo-section-head"><div class="section-title">운영 메모</div><button type="button" class="primary" id="v406OperatingMemoSave">저장</button></div><textarea id="v406OperatingMemoText" class="memo-textarea" placeholder="운영 메모를 입력하세요...">'+(typeof escapeHtml==='function'?escapeHtml(data.notes||''):String(data.notes||''))+'</textarea>';
+    main.appendChild(sec);
+    sec.querySelector('#v406OperatingMemoSave').onclick=()=>{const d=read(memoKey,{})||{};d.notes=sec.querySelector('#v406OperatingMemoText').value.trim();write(memoKey,d);toastSafe('저장되었습니다.');};
+    sec.querySelector('#v406OperatingMemoText').addEventListener('blur',()=>{const d=read(memoKey,{})||{};d.notes=sec.querySelector('#v406OperatingMemoText').value.trim();write(memoKey,d);toastSafe('저장되었습니다.');});
+  }
+  const obs=new MutationObserver(()=>ensureOperatingMemo());obs.observe(document.body,{childList:true,subtree:true});setTimeout(ensureOperatingMemo,200);
+
+  // Ladder: make the existing "전체 결과 보기" button work even if an older render is active.
+  function revealAllLadder(){
+    const st=window.__v369;if(!st)return;
+    const res=document.getElementById('v369Results');
+    if(!res)return;
+    const rows=st.names.map((name,i)=>{const end=st.ends?.[i]??(typeof trace==='function'?trace(i,st.steps):i);return '<div class="v369-result-row"><b>'+((typeof esc==='function')?esc(name):name)+'</b><span>→</span><strong>'+((typeof esc==='function')?esc(st.outs[end]):st.outs[end])+'</strong></div>';}).join('');
+    res.innerHTML='<b>🎉 전체 결과</b>'+rows;
+    // Draw every trace one after another without relying on button closures.
+    if(typeof window.renderV369LadderSetup==='function'&&document.getElementById('v369Svg')){
+      const svg=document.getElementById('v369Svg');svg.querySelectorAll('.v369-trace,.v369-ball').forEach(e=>e.remove());
+      const n=st.names.length,W=1000,L=80,R=920,TOP=85,BOT=430,xs=Array.from({length:n},(_,i)=>L+(R-L)*(i/(n-1)));
+      st.names.forEach((_,idx)=>{let x=idx,pts=[[xs[x],TOP]];for(let ri=0;ri<st.steps.length;ri++){const y=TOP+(BOT-TOP)*(ri+1)/(st.steps.length+1);if(x>0&&st.steps[ri][x-1]){pts.push([xs[x],y],[xs[x-1],y]);x--}else if(x<st.steps[ri].length&&st.steps[ri][x]){pts.push([xs[x],y],[xs[x+1],y]);x++}else pts.push([xs[x],y])}pts.push([xs[x],BOT]);const poly=document.createElementNS('http://www.w3.org/2000/svg','polyline');poly.setAttribute('class','v369-trace');poly.setAttribute('points',pts.map(p=>p.join(',')).join(' '));svg.appendChild(poly);});
+    }
+  }
+  window.revealAllV369Ladder=revealAllLadder;
+  document.addEventListener('click',e=>{if(e.target.closest('#v369All')){e.preventDefault();e.stopPropagation();revealAllLadder();}},true);
+})();
+</script>
+
 </body>
 </html>
 
