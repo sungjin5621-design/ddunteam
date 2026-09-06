@@ -2278,6 +2278,117 @@ window.updateParticipantSummary=function(){
   `;document.head.appendChild(st);
 })();
 </script>
+
+<script id="v40.7-final-persistence-and-memo-fix">
+(function(){
+  'use strict';
+  const LOCAL_KEY='ddunteam.distribution.persistence.v2';
+  const LEGACY_KEY=(()=>{try{return (typeof LS!=='undefined'&&LS.memo)||'ddunteam.memo.v34'}catch(e){return 'ddunteam.memo.v34'}})();
+  const read=()=>{try{return JSON.parse(localStorage.getItem(LOCAL_KEY)||'null')||{version:2,settings:{diamond:0,notes:''},payments:{},history:[]}}catch(e){return {version:2,settings:{diamond:0,notes:''},payments:{},history:[]}}};
+  const write=v=>{try{localStorage.setItem(LOCAL_KEY,JSON.stringify(v));return true}catch(e){console.warn(e);return false}};
+  const legacy=()=>{try{return JSON.parse(localStorage.getItem(LEGACY_KEY)||'null')||{diamond:0,allocations:{},distributionNotes:{},notes:''}}catch(e){return {diamond:0,allocations:{},distributionNotes:{},notes:''}}};
+  const membersList=()=>{try{return (typeof members!=='undefined'&&Array.isArray(members))?members.filter(m=>Number(m?.[1])!==100):[]}catch(e){return []}};
+  const key=m=>String(m?.[4]??m?.[0]??'');
+  const name=m=>String(m?.[0]??'');
+  const find=k=>membersList().find(m=>key(m)===String(k)||name(m)===String(k));
+  const toastSafe=msg=>{try{if(typeof toast==='function')toast(msg);else console.info(msg)}catch(e){console.info(msg)}};
+
+  function localPayload(){
+    const l=read(), old=legacy(); l.settings=l.settings||{diamond:0,notes:''}; l.payments=l.payments||{}; l.history=Array.isArray(l.history)?l.history:[];
+    if(!Number(l.settings.diamond)&&Number(old.diamond))l.settings.diamond=Number(old.diamond);
+    if(!l.settings.notes&&old.notes)l.settings.notes=String(old.notes);
+    const alloc=old.allocations||{}, notes=old.distributionNotes||{};
+    membersList().forEach(m=>{const k=key(m),n=name(m); if(!l.payments[k] && (alloc[n]!==undefined || notes[n]!==undefined)) l.payments[k]={member_id:k,nickname:n,amount:Number(alloc[n])||0,paid:false,note:String(notes[n]||''),time_class:''};});
+    return l;
+  }
+  function mergePayload(remote, local){
+    const out={version:2,settings:{diamond:Number(local.settings?.diamond)||0,notes:String(local.settings?.notes||'')},payments:{...(remote?.payments||{}),...(local?.payments||{})},history:[]};
+    // Local state wins for an existing member because it represents the latest browser action.
+    if(remote?.settings){ if(!out.settings.diamond)out.settings.diamond=Number(remote.settings.diamond)||0; if(!out.settings.notes)out.settings.notes=String(remote.settings.notes||''); }
+    const seen=new Set();
+    [...(remote?.history||[]),...(local?.history||[])].forEach(x=>{const id=String(x?.id||'');const sig=id||`${x?.author||''}|${x?.createdAt||''}|${x?.text||''}`;if(!seen.has(sig)){seen.add(sig);out.history.push(x)}});
+    out.history.sort((a,b)=>String(a.createdAt||'').localeCompare(String(b.createdAt||'')));
+    return out;
+  }
+  function applyLocalToMemory(l){
+    window.__v39Dist=window.__v39Dist||{payments:{},settings:{diamond:0,notes:''},ready:true,backend:'private'};
+    window.__v39Dist.ready=true;window.__v39Dist.payments={...(l.payments||{})};window.__v39Dist.settings={...(l.settings||{})};
+    try{const old=legacy();old.diamond=Number(l.settings?.diamond)||0;old.notes=String(l.settings?.notes||'');old.allocations=old.allocations||{};old.distributionNotes=old.distributionNotes||{};Object.values(l.payments||{}).forEach(x=>{if(x?.nickname){old.allocations[x.nickname]=Number(x.amount)||0;old.distributionNotes[x.nickname]=String(x.note||'')}});localStorage.setItem(LEGACY_KEY,JSON.stringify(old));}catch(e){}
+  }
+  function currentLocalRecord(m){const l=read(),k=key(m),n=name(m);return l.payments?.[k]||l.payments?.[n]||null}
+  const previousRecord=window.v39DistributionRecord;
+  window.v39DistributionRecord=function(m){const local=currentLocalRecord(m);if(local)return local;try{return typeof previousRecord==='function'?(previousRecord(m)||{}):{}}catch(e){return {}}};
+
+  async function persistRemote(){
+    try{
+      if(!(typeof cloudReady!=='undefined'&&cloudReady&&typeof cloudClient!=='undefined'&&cloudClient&&typeof cloudUser!=='undefined'&&cloudUser))return false;
+      const l=read();const payload={version:2,settings:l.settings||{diamond:0,notes:''},payments:l.payments||{},history:Array.isArray(l.history)?l.history:[]};
+      const r=await cloudClient.from('clan_private_state').upsert({clan_id:typeof CLOUD_CLAN_ID!=='undefined'?CLOUD_CLAN_ID:'ddunteam',state_key:'distribution',payload,updated_at:new Date().toISOString()},{onConflict:'clan_id,state_key'});
+      if(r.error)throw r.error; return true;
+    }catch(e){console.warn('final distribution remote save:',e);return false}
+  }
+
+  window.v407TogglePaid=function(memberId){
+    const m=find(memberId);if(!m)return toastSafe('혈맹원을 찾을 수 없습니다.');
+    const l=localPayload(),k=key(m),old=l.payments[k]||l.payments[name(m)]||{},row=[...document.querySelectorAll('.v405-row')].find(x=>String(x.querySelector('[data-alloc]')?.dataset.alloc)===name(m));
+    const amount=Number(row?.querySelector('[data-alloc]')?.value)||Number(old.amount)||0,paid=!Boolean(old.paid);
+    l.payments[k]={...old,member_id:k,nickname:name(m),amount,paid,paid_at:paid?new Date().toISOString():null,paid_by_user_id:paid&&window.cloudUser?window.cloudUser.id:null,paid_by_nickname:paid?(window.currentNick||''):null,note:String(old.note||''),time_class:String(old.time_class||'')};
+    write(l);applyLocalToMemory(l);toastSafe(paid?'지급되었습니다.':'지급이 취소되었습니다.');
+    setTimeout(()=>{try{window.__v405RenderDistribution&&window.__v405RenderDistribution()}catch(e){}},0);
+    persistRemote();
+  };
+  window.v39TogglePaid=window.v407TogglePaid;
+
+  window.v407SaveInlineNote=function(memberId,input){
+    const m=find(memberId);if(!m||!input)return;
+    const l=localPayload(),k=key(m),old=l.payments[k]||l.payments[name(m)]||{},amount=Number(input.closest('.v405-row')?.querySelector('[data-alloc]')?.value)||Number(old.amount)||0,note=String(input.value||'').trim();
+    l.payments[k]={...old,member_id:k,nickname:name(m),amount,paid:Boolean(old.paid),paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note,time_class:String(old.time_class||'')};
+    write(l);applyLocalToMemory(l);input.dataset.saved=note;input.classList.remove('note-dirty');toastSafe('저장되었습니다.');persistRemote();
+  };
+  window.v405SaveInlineNote=window.v407SaveInlineNote;
+
+  window.savePrivateMemo=function(){
+    const can=(()=>{try{return typeof canDist==='function'?canDist():(typeof isPageOwner==='function'&&isPageOwner())||(typeof rankOf==='function'&&rankOf(currentNick)==='군주')}catch(e){return true}})();
+    if(!can)return toastSafe('소유자와 군주만 사용할 수 있습니다.');
+    const l=localPayload();l.settings=l.settings||{};l.settings.diamond=Number(document.getElementById('memoDiamond')?.value)||Number(l.settings.diamond)||0;
+    // Do not use the history composer as the current memo value.
+    const note=document.getElementById('privateNotes');if(note)l.settings.notes=String(note.value||'').trim();
+    document.querySelectorAll('[data-alloc]').forEach(e=>{const m=find(e.dataset.alloc);if(m){const k=key(m),old=l.payments[k]||{};l.payments[k]={...old,member_id:k,nickname:name(m),amount:Number(e.value)||0}}});
+    document.querySelectorAll('[data-note-member]').forEach(e=>{const m=find(e.dataset.noteMember);if(m){const k=key(m),old=l.payments[k]||{};l.payments[k]={...old,member_id:k,nickname:name(m),amount:Number(document.querySelector(`[data-alloc="${CSS.escape(name(m))}"]`)?.value)||Number(old.amount)||0,note:String(e.value||'').trim()}}});
+    write(l);applyLocalToMemory(l);toastSafe('저장되었습니다.');persistRemote();
+  };
+
+  function historyList(){return localPayload().history||[]}
+  function renderHistory(){const box=document.getElementById('v407OperatingMemoHistory');if(!box)return;const list=historyList();box.innerHTML=list.length?list.slice().reverse().map((x,i)=>`<div class="v407-history-item"><div class="v407-history-meta"><b>${escapeHtml(String(x.author||'작성자'))}</b><time>${new Date(x.createdAt).toLocaleString('ko-KR',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</time><button type="button" data-del-memo="${escapeHtml(String(x.id||''))}">삭제</button></div><div class="v407-history-body">${escapeHtml(String(x.text||'')).replace(/\n/g,'<br>')}</div></div>`).join(''):'<div class="v407-history-empty">아직 작성된 운영 메모가 없습니다.</div>'}
+  function ensureOperatingMemo(){
+    const main=document.querySelector('.v405-main');if(!main)return;
+    let sec=document.getElementById('v407OperatingMemo');
+    if(!sec){
+      const old=document.getElementById('v406OperatingMemo'); if(old)old.remove();
+      sec=document.createElement('div');sec.className='memo-section';sec.id='v407OperatingMemo';
+      sec.innerHTML='<div class="memo-section-head"><div class="section-title">운영 메모</div><button type="button" class="primary" id="v407OperatingMemoPost">글 올리기</button></div><textarea id="v407OperatingMemoText" class="memo-textarea" placeholder="운영 메모를 입력하세요..."></textarea><div id="v407OperatingMemoHistory"></div>';
+      main.appendChild(sec);
+    }
+    const btn=sec.querySelector('#v407OperatingMemoPost'); if(btn&&!btn.dataset.bound){btn.dataset.bound='1';btn.onclick=()=>{const ta=sec.querySelector('#v407OperatingMemoText');const text=String(ta?.value||'').trim();if(!text)return toastSafe('메모 내용을 입력해주세요.');const l=localPayload();l.history=l.history||[];l.history.push({id:(crypto?.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random()),author:String(window.currentNick||'작성자'),text,createdAt:new Date().toISOString()});write(l);applyLocalToMemory(l);ta.value='';renderHistory();toastSafe('운영 메모가 저장되었습니다.');persistRemote();};}
+    renderHistory();
+  }
+  document.addEventListener('click',e=>{const b=e.target.closest('[data-del-memo]');if(!b)return;const id=b.dataset.delMemo,l=localPayload();if(!confirm('이 운영 메모를 삭제할까요?'))return;l.history=(l.history||[]).filter(x=>String(x.id)!==String(id));write(l);renderHistory();toastSafe('운영 메모를 삭제했습니다.');persistRemote();});
+
+  async function loadFinal(){
+    const local=localPayload();
+    let remote=null;
+    try{if(typeof cloudReady!=='undefined'&&cloudReady&&cloudClient&&cloudUser){const r=await cloudClient.from('clan_private_state').select('state_key,payload').eq('clan_id',CLOUD_CLAN_ID).eq('state_key','distribution').maybeSingle();if(!r.error&&r.data?.payload)remote=r.data.payload;}}catch(e){console.warn(e)}
+    const merged=mergePayload(remote,local);write(merged);applyLocalToMemory(merged);renderHistory();
+  }
+  const oldRender=window.__v405RenderDistribution;
+  if(typeof oldRender==='function')window.__v405RenderDistribution=function(){oldRender.apply(this,arguments);setTimeout(ensureOperatingMemo,20)};
+  const boot=()=>{loadFinal().then(()=>{try{window.__v405RenderDistribution&&window.__v405RenderDistribution()}catch(e){};ensureOperatingMemo()})};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,50);
+  const obs=new MutationObserver(()=>ensureOperatingMemo());obs.observe(document.body,{childList:true,subtree:true});
+  const st=document.createElement('style');st.textContent='#v407OperatingMemo{margin-top:14px;padding:14px;border:1px solid #293642;background:#0a1017;border-radius:10px}#v407OperatingMemoHistory{margin-top:14px;display:flex;flex-direction:column;gap:8px;max-height:560px;overflow:auto}.v407-history-item{padding:12px 14px;border:1px solid #293642;background:#0d131b;border-radius:9px}.v407-history-meta{display:flex;align-items:center;gap:10px;color:#7f93aa;font-size:11px;margin-bottom:7px}.v407-history-meta b{color:#dce7f5;font-size:12px}.v407-history-meta time{margin-right:auto}.v407-history-meta button{padding:3px 7px;font-size:10px;border:1px solid #4a2d35;background:#171015;color:#c9a7ae;border-radius:6px}.v407-history-body{font-size:13px;line-height:1.65;color:#e8eef7;word-break:break-word}.v407-history-empty{padding:18px;text-align:center;color:#65768b;border:1px dashed #293545;border-radius:9px;font-size:12px}';document.head.appendChild(st);
+})();
+</script>
+
 </body>
 </html>
 
