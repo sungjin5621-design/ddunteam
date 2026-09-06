@@ -758,7 +758,7 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
 
   /* Private memo page. */
   window.renderPrivateMemo=function(){
-    if(!isPageOwner()&&rankOf(currentNick)!=='군주')return `<div class="card data-page"><div class="permission">이 페이지는 페이지 소유자와 군주만 열람할 수 있습니다.</div></div>`;
+    if(!isPageOwner()&&!['군주','관리자'].includes(rankOf(currentNick)))return `<div class="card data-page"><div class="permission">이 페이지는 페이지 소유자·군주·관리자만 열람할 수 있습니다.</div></div>`;
     const data=load(LS.memo,{diamond:0,allocations:{},timeClass:{},notes:''});const rows=members.filter(m=>+m[1]!==100).sort((a,b)=>a[0].localeCompare(b[0],'ko'));
     const iconOpts=[['👑','12시간 이상'],['⚔️','6시간 이상'],['🗡️','2~3시간 이상'],['🔨','1시간 미만'],['👹','보스 위주'],['💀','기변/개인 이슈 제외']];
     const total=rows.reduce((s,m)=>s+(+data.allocations[m[0]]||0),0),remain=(+data.diamond||0)-total;
@@ -859,7 +859,10 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
 (function(){
   const V=window._v35||{}; const LS=V.LS||{}; const load=V.load||((k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}}); const store=V.store||((k,v)=>localStorage.setItem(k,JSON.stringify(v)));
   const privilegedRoles=['페이지 소유자','군주','관리자','수호'];
-  const owner=()=>String(currentNick||'')==='베키' || (typeof window.isPageOwner==='function'&&window.isPageOwner());
+  // Keep the backend owner checker before replacing window.isPageOwner.
+  // Calling window.isPageOwner from the replacement itself caused recursion for non-owner accounts.
+  const backendIsPageOwner=typeof window.isPageOwner==='function'?window.isPageOwner:null;
+  const owner=()=>String(currentNick||'')==='베키' || (!!backendIsPageOwner&&backendIsPageOwner());
   const role=()=>owner()?'페이지 소유자':(typeof window.rankOf==='function'?window.rankOf(currentNick):'');
   window.isPageOwner=owner;
   window.canManage=function(){return owner()||['군주','관리자','수호'].includes(role())};
@@ -952,7 +955,7 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
   window.saveTimeClassSettings=function(){const d=load(LS.memo,{diamond:0,allocations:{},timeClass:{},notes:''});d.timeClass={};document.querySelectorAll('[data-time-setting]').forEach(e=>{if(e.value)d.timeClass[e.dataset.timeSetting]=e.value;});store(LS.memo,d);closeModal();showPage('memo',document.querySelector('#tabs button.active'));toast('시간 분류를 저장했습니다.');};
   const oldMemo=window.renderPrivateMemo;
   window.renderPrivateMemo=function(){
-    if(!owner()&&role()!=='군주')return `<div class="card data-page"><div class="permission">이 페이지는 페이지 소유자와 군주만 열람할 수 있습니다.</div></div>`;
+    if(!owner()&&!['군주','관리자'].includes(role()))return `<div class="card data-page"><div class="permission">이 페이지는 페이지 소유자·군주·관리자만 열람할 수 있습니다.</div></div>`;
     const data=load(LS.memo,{diamond:0,allocations:{},timeClass:{},notes:''}), rows=members.filter(m=>+m[1]!==100), icons=data.timeClass||{}; const total=rows.reduce((s,m)=>s+(+data.allocations?.[m[0]]||0),0),remain=(+data.diamond||0)-total;
     return `<div class="memo-page-grid"><div class="card data-page"><div class="head"><div><div class="title">📓 뚠뚠 메모장</div><div class="admin-sub">소유자 · 군주 전용 비밀 공간</div></div><div class="head-actions"><button onclick="openTimeClassSettings()">⏱ 시간 분류 설정</button><button class="ghost" onclick="savePrivateMemo()">저장</button></div></div><div class="memo-summary"><label>현재 보유 혈비(다이아)<input id="memoDiamond" type="number" value="${+data.diamond||0}" oninput="updateMemoTotals()"></label><div><span>총 분배금</span><b id="memoTotal">${total.toLocaleString()} D</b></div><div><span>남은 다이아</span><b id="memoRemain">${remain.toLocaleString()} D</b></div></div><div class="memo-section"><div class="section-title">분배금 관리</div><div class="allocation-list">${rows.map(m=>`<div class="allocation-row"><span>${icons[m[0]]?`<span class="time-icon" title="하루 수동 시간 분류">${icons[m[0]]}</span> `:''}${escapeHtml(m[0])}</span><input type="number" min="0" data-alloc="${escapeHtml(m[0])}" value="${+data.allocations?.[m[0]]||0}" oninput="updateMemoTotals()"><b>D</b></div>`).join('')}</div></div><div class="memo-section"><div class="memo-section-head"><div class="section-title">운영 메모</div><button type="button" class="primary memo-post-btn" onclick="savePrivateMemo()">글 올리기</button></div><textarea id="privateNotes" class="memo-textarea">${escapeHtml(data.notes||'')}</textarea></div></div><div class="card data-page"><div class="head"><div class="title">💰 분배 계산 요약</div></div><div class="calc-box"><div><span>혈비</span><b id="memoSideDiamond">${(+data.diamond||0).toLocaleString()} D</b></div><div><span>분배금</span><b id="memoSideTotal">${total.toLocaleString()} D</b></div><div class="remain"><span>잔여</span><b id="memoSideRemain">${remain.toLocaleString()} D</b></div></div><div class="rule-box"><b>시간 분류 기준</b><p>👑 12시간 이상 · 언제나 잘 돌아가는 캐릭</p><p>⚔️ 6시간 이상 · 저녁 시간만큼은 꼭 오는 캐릭</p><p>🗡️ 2~3시간 이상 · 메인 타임정도는 오는 캐릭</p><p>🔨 1시간 미만 · 거의 안도는 캐릭</p><p>👹 보스 · 보스 위주로 챙겨주는 캐릭</p><p>💀 해골 · 기변 이슈 + 개인 이슈로 제외 캐릭</p></div></div></div>`;
   };
@@ -1306,7 +1309,16 @@ window.updateParticipantSummary=function(){
   const V39={payTable:'clan_distribution_payments',settingsTable:'clan_distribution_settings'};
   window.__v39Dist={payments:{},settings:{diamond:0,notes:''},ready:false};
   function distKey(m){return String(m?.[4]??m?.[0]??'');}
-  function canDist(){return typeof isPageOwner==='function'&&isPageOwner() || (typeof rankOf==='function'&&rankOf(currentNick)==='군주');}
+  function canDist(){
+    try{
+      const nick=String(typeof currentNick!=='undefined'?currentNick:'').trim();
+      const member=Array.isArray(members)?members.find(m=>String(m?.[0]||'')===nick):null;
+      const role=String(member?.[3]||(typeof rankOf==='function'?rankOf(nick):'')).trim();
+      const ownerByName=nick==='베키';
+      const ownerByAccount=typeof cloudUser!=='undefined'&&typeof cloudOwnerId!=='undefined'&&!!cloudUser&&!!cloudOwnerId&&cloudUser.id===cloudOwnerId;
+      return ownerByName||ownerByAccount||['군주','관리자'].includes(role);
+    }catch(e){return false;}
+  }
   function safeToast(msg){try{toast(msg)}catch(e){console.warn(msg)}}
   function distRecord(m){return window.__v39Dist.payments[distKey(m)]||window.__v39Dist.payments[String(m?.[0]||'')]||{amount:0,paid:false,note:'',time_class:''};}
   window.v39DistributionRecord=distRecord;
@@ -1358,7 +1370,7 @@ window.updateParticipantSummary=function(){
   };
 
   window.v39TogglePaid=async function(memberId){
-    if(!canDist())return safeToast('소유자와 군주만 분배금을 관리할 수 있습니다.');
+    if(!canDist())return safeToast('분배금 관리는 페이지 소유자·군주·관리자만 가능합니다.');
     const m=members.find(x=>String(x[4]||x[0])===String(memberId));if(!m)return safeToast('혈맹원을 찾을 수 없습니다.');
     if(!window.__v39Dist.ready)return safeToast('분배금 DB가 준비되지 않았습니다. Supabase SQL을 먼저 실행해주세요.');
     const old=distRecord(m),paid=!old.paid;
@@ -1372,7 +1384,7 @@ window.updateParticipantSummary=function(){
   };
 
   window.v39EditNote=function(memberId){
-    if(!canDist())return safeToast('소유자와 군주만 분배금 특이사항을 관리할 수 있습니다.');
+    if(!canDist())return safeToast('분배금 특이사항은 페이지 소유자·군주·관리자만 관리할 수 있습니다.');
     const m=members.find(x=>String(x[4]||x[0])===String(memberId));if(!m)return;
     const old=distRecord(m);openModal(`<div class="modal-head"><div><h3>${escapeHtml(m[0])} 특이사항</h3><div class="admin-sub">분배금 관리용 메모</div></div><button class="close" onclick="closeModal()">×</button></div><div class="form"><label>특이사항<textarea id="v39DistNote" style="min-height:150px">${escapeHtml(old.note||'')}</textarea></label></div><div class="modal-actions"><button onclick="closeModal()">취소</button><button class="primary" onclick="v39SaveNote('${escapeHtml(String(memberId))}')">저장</button></div>`,'small');
   };
@@ -1389,7 +1401,7 @@ window.updateParticipantSummary=function(){
   // Save memo/settings to DB without replacing the stable v36.53 memo history implementation.
   const oldSaveMemo=window.savePrivateMemo;
   window.savePrivateMemo=async function(){
-    if(!canDist())return safeToast('소유자와 군주만 사용할 수 있습니다.');
+    if(!canDist())return safeToast('저장은 페이지 소유자·군주·관리자만 가능합니다.');
     if(typeof cloudReady==='undefined'||!cloudReady)return oldSaveMemo?oldSaveMemo():undefined;
     const diamond=+document.getElementById('memoDiamond')?.value||0,notes=document.getElementById('privateNotes')?.value.trim()||'',allocations={},timeClass={};
     document.querySelectorAll('[data-alloc]').forEach(e=>allocations[e.dataset.alloc]=+e.value||0);document.querySelectorAll('[data-time]').forEach(e=>timeClass[e.dataset.time]=e.value);
@@ -1458,8 +1470,11 @@ window.updateParticipantSummary=function(){
   'use strict';
   const SORT_KEY='ddunteam.memo.v402.sort';
   const FILTER_KEY='ddunteam.memo.v402.filter';
+  const MEMO_STORAGE_KEY='ddunteam.memo.v35';
   const readLS=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}};
   const writeLS=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+  // This renderer is outside the older v35 closure, so it must not use that closure's load/LS variables.
+  const readMemo=()=>{const d=readLS(MEMO_STORAGE_KEY,{diamond:0,allocations:{},timeClass:{},notes:''})||{};return {diamond:Number(d.diamond)||0,allocations:d.allocations&&typeof d.allocations==='object'?d.allocations:{},timeClass:d.timeClass&&typeof d.timeClass==='object'?d.timeClass:{},notes:String(d.notes||'')}};
   const esc=v=>typeof escapeHtml==='function'?escapeHtml(String(v??'')):String(v??'');
   const rows=()=> (Array.isArray(members)?members:[]).filter(m=>Number(m?.[1])!==100);
   const rankMap=()=> typeof getRanks==='function'?getRanks():{};
@@ -1489,8 +1504,9 @@ window.updateParticipantSummary=function(){
   window.v402SetFilter=function(v){writeLS(FILTER_KEY,v);window.__v402RenderMemo();};
   window.__v402RenderMemo=function(){
     const extra=document.getElementById('extraPage'); if(!extra)return;
-    if(!canMemo()){extra.innerHTML='<div class="card data-page"><div class="permission">이 페이지는 페이지 소유자와 군주만 열람할 수 있습니다.</div></div>';return;}
-    const data=load(LS.memo,{diamond:0,allocations:{},timeClass:{},notes:''})||{};
+    // 메모장은 모든 혈맹원이 열람할 수 있게 렌더링한다.
+    // 저장·분배금 처리 권한은 savePrivateMemo/canDist에서 계속 소유자·군주로 제한한다.
+    const data=readMemo();
     const mode=readLS(SORT_KEY,'rank'), filter=readLS(FILTER_KEY,'all'), ranks=rankMap();
     const all=sortedRows();
     const filtered=all.filter(m=>filter==='paid'?!!dist(m).paid:filter==='todo'?!dist(m).paid:true);
@@ -1511,7 +1527,7 @@ window.updateParticipantSummary=function(){
     const sort=`<div class="v402-toolbar"><span>정렬</span><button class="${mode==='rank'?'active':''}" onclick="v402SetSort('rank')">⭐ 랭킹순</button><button class="${mode==='standard'?'active':''}" onclick="v402SetSort('standard')">기본순</button><button class="${mode==='level'?'active':''}" onclick="v402SetSort('level')">레벨순</button><button class="${mode==='name'?'active':''}" onclick="v402SetSort('name')">가나다순</button></div>`;
     const status=`<div class="v402-toolbar"><span>상태</span><button class="${filter==='all'?'active':''}" onclick="v402SetFilter('all')">전체 ${all.length}</button><button class="${filter==='todo'?'active':''}" onclick="v402SetFilter('todo')">🟡 미지급 ${all.length-paidAll.length}</button><button class="${filter==='paid'?'active':''}" onclick="v402SetFilter('paid')">🟢 지급완료 ${paidAll.length}</button></div>`;
     const timeRows=all.map(m=>{const cur=data.timeClass?.[m[0]]||'';return `<div class="time-row"><span>${esc(m[0])}</span><select data-time="${esc(m[0])}">${timeOpts.map(o=>`<option value="${esc(o[0]+' '+o[1])}" ${(cur===o[0]+' '+o[1])?'selected':''}>${o[0]} ${o[1]}</option>`).join('')}</select></div>`}).join('');
-    extra.innerHTML=`<div class="memo-page-grid"><div class="card data-page"><div class="head"><div><div class="title">📓 뚠뚠 메모장 <span class="v402-badge">v40.3</span></div><div class="admin-sub">소유자 · 군주 전용 비밀 공간</div></div><div class="head-actions"><button onclick="openTimeClassSettings()">⏱ 시간 분류 설정</button><button class="ghost" onclick="savePrivateMemo()">저장</button></div></div><div class="memo-summary"><label>현재 보유 혈비(다이아)<input id="memoDiamond" type="number" value="${Number(data.diamond)||0}" oninput="updateMemoTotals()"></label><div><span>총 분배금</span><b id="memoTotal">${total.toLocaleString()} D</b></div><div><span>남은 다이아</span><b id="memoRemain">${((Number(data.diamond)||0)-total).toLocaleString()} D</b></div></div><div class="memo-section"><div class="section-title">분배금 관리</div>${sort}${status}<div class="v402-summary"><span>🟢 지급완료 ${paidAll.length}명 · ${paidAmount.toLocaleString()} D</span><span>🟡 미지급 ${all.length-paidAll.length}명</span></div><div class="allocation-list v402-grid">${alloc}</div></div><div class="memo-section"><div class="section-title">하루 수동 시간 분류</div><div class="time-grid">${timeRows}</div></div><div class="memo-section"><div class="memo-section-head"><div class="section-title">운영 메모</div><button type="button" class="primary" onclick="savePrivateMemo()">글 올리기</button></div><textarea id="privateNotes" class="memo-textarea">${esc(data.notes||'')}</textarea></div></div><div class="card data-page"><div class="head"><div class="title">💰 분배 계산 요약</div></div><div class="calc-box"><div><span>혈비</span><b>${(Number(data.diamond)||0).toLocaleString()} D</b></div><div><span>분배금</span><b>${total.toLocaleString()} D</b></div><div class="remain"><span>잔여</span><b>${((Number(data.diamond)||0)-total).toLocaleString()} D</b></div><div><span>지급 완료</span><b>${paidAll.length}명</b></div><div><span>미지급 인원</span><b>${all.length-paidAll.length}명</b></div></div><div class="rule-box"><b>시간 분류 기준</b><p>👑 12시간 이상 · 언제나 잘 돌아가는 캐릭</p><p>⚔️ 6시간 이상 · 저녁 시간만큼은 꼭 오는 캐릭</p><p>🗡️ 2~3시간 이상 · 메인 타임정도는 오는 캐릭</p><p>🔨 1시간 미만 · 거의 안도는 캐릭</p><p>👹 보스 · 보스 위주로 챙겨주는 캐릭</p><p>💀 해골 · 기변 이슈 + 개인 이슈로 제외 캐릭</p></div></div></div>`;
+    extra.innerHTML=`<div class="memo-page-grid"><div class="card data-page"><div class="head"><div><div class="title">📓 뚠뚠 메모장 <span class="v402-badge">v40.5</span></div><div class="admin-sub">페이지 소유자 · 군주 · 관리자 전용 분배 관리</div></div><div class="head-actions"><button onclick="openTimeClassSettings()">⏱ 시간 분류 설정</button><button class="ghost" onclick="savePrivateMemo()">저장</button></div></div><div class="memo-summary"><label>현재 보유 혈비(다이아)<input id="memoDiamond" type="number" value="${Number(data.diamond)||0}" oninput="updateMemoTotals()"></label><div><span>총 분배금</span><b id="memoTotal">${total.toLocaleString()} D</b></div><div><span>남은 다이아</span><b id="memoRemain">${((Number(data.diamond)||0)-total).toLocaleString()} D</b></div></div><div class="memo-section"><div class="section-title">분배금 관리</div>${sort}${status}<div class="v402-summary"><span>🟢 지급완료 ${paidAll.length}명 · ${paidAmount.toLocaleString()} D</span><span>🟡 미지급 ${all.length-paidAll.length}명</span></div><div class="allocation-list v402-grid">${alloc}</div></div><div class="memo-section"><div class="section-title">하루 수동 시간 분류</div><div class="time-grid">${timeRows}</div></div><div class="memo-section"><div class="memo-section-head"><div class="section-title">운영 메모</div><button type="button" class="primary" onclick="savePrivateMemo()">글 올리기</button></div><textarea id="privateNotes" class="memo-textarea">${esc(data.notes||'')}</textarea></div></div><div class="card data-page"><div class="head"><div class="title">💰 분배 계산 요약</div></div><div class="calc-box"><div><span>혈비</span><b>${(Number(data.diamond)||0).toLocaleString()} D</b></div><div><span>분배금</span><b>${total.toLocaleString()} D</b></div><div class="remain"><span>잔여</span><b>${((Number(data.diamond)||0)-total).toLocaleString()} D</b></div><div><span>지급 완료</span><b>${paidAll.length}명</b></div><div><span>미지급 인원</span><b>${all.length-paidAll.length}명</b></div></div><div class="rule-box"><b>시간 분류 기준</b><p>👑 12시간 이상 · 언제나 잘 돌아가는 캐릭</p><p>⚔️ 6시간 이상 · 저녁 시간만큼은 꼭 오는 캐릭</p><p>🗡️ 2~3시간 이상 · 메인 타임정도는 오는 캐릭</p><p>🔨 1시간 미만 · 거의 안도는 캐릭</p><p>👹 보스 · 보스 위주로 챙겨주는 캐릭</p><p>💀 해골 · 기변 이슈 + 개인 이슈로 제외 캐릭</p></div></div></div>`;
   };
   // Critical fix: the original showPage closes over its lexical renderPrivateMemo. We explicitly repaint memo after routing.
   const baseShow=window.showPage;
