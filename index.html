@@ -1387,30 +1387,21 @@ window.updateParticipantSummary=function(){
     const amount=+document.querySelector(`[data-alloc="${CSS.escape(String(m[0]))}"]`)?.value||+old.amount||0;
     const payload={clan_id:CLOUD_CLAN_ID,member_id:String(m[4]||m[0]),nickname:m[0],amount,paid,paid_at:paid?new Date().toISOString():null,paid_by_user_id:paid&&cloudUser?cloudUser.id:null,paid_by_nickname:paid?currentNick:null,note:old.note||'',time_class:old.time_class||''};
     try{
-      // 화면 동작은 DB 연결 여부와 무관하게 즉시 저장한다.
-      window.__v39Dist.ready=true;
-      window.__v39Dist.payments=window.__v39Dist.payments||{};
+      window.__v39Dist.ready=true;window.__v39Dist.payments=window.__v39Dist.payments||{};
       window.__v39Dist.payments[distKey(m)]=payload;
-      const local=localMemo();
-      local.allocations=local.allocations||{};
-      local.allocations[m[0]]=amount;
-      store(LS.memo,local);
-
+      const local=localMemo();local.allocations=local.allocations||{};local.allocations[m[0]]=amount;store(LS.memo,local);
+      safeToast(paid?'지급되었습니다.':'지급이 취소되었습니다.');
       if(window.__v39Dist.backend==='dedicated' && window.cloudClient && cloudReady && cloudUser){
-        const q=old.id?cloudClient.from(V39.payTable).update(payload).eq('id',old.id):cloudClient.from(V39.payTable).upsert(payload,{onConflict:'clan_id,member_id'});
-        const {error}=await q;if(error)console.warn('distribution remote payment save:',error);
+        try{
+          const q=old.id?cloudClient.from(V39.payTable).update(payload).eq('id',old.id):cloudClient.from(V39.payTable).upsert(payload,{onConflict:'clan_id,member_id'});
+          const {error}=await q;if(error)console.warn('distribution remote payment save:',error);
+        }catch(e){console.warn('distribution remote payment save:',e)}
       }else if(window.__v39Dist.backend==='private' && window.cloudClient && cloudReady && cloudUser){
         window.__v39Dist.settings=window.__v39Dist.settings||{diamond:0,notes:''};
-        try{await savePrivateState();}catch(e){console.warn('distribution private-state payment save:',e);}
+        try{await savePrivateState()}catch(e){console.warn('distribution private-state payment save:',e);}
       }
-      // 지급 버튼 클릭 자체는 항상 사용자에게 완료 이벤트를 보여준다.
-      const active=document.querySelector('#tabs button.active');
-      if(active)showPage('memo',active);
-      safeToast(paid?'지급되었습니다.':'지급이 취소되었습니다.');
-    }catch(e){
-      console.error('distribution payment save:',e);
-      safeToast('저장 중 오류가 발생했습니다.');
-    }
+      try{if(typeof window.__v405RenderDistribution==='function')window.__v405RenderDistribution();}catch(e){console.warn('distribution rerender:',e)}
+    }catch(e){console.error('distribution payment save:',e);safeToast('저장 중 오류가 발생했습니다.');}
   };
 
   window.v39EditNote=function(memberId){
@@ -1420,17 +1411,23 @@ window.updateParticipantSummary=function(){
   };
   window.v39SaveNote=async function(memberId){
     const m=members.find(x=>String(x[4]||x[0])===String(memberId));if(!m)return;
-    if(!window.__v39Dist.ready)return safeToast('분배금 저장소에 연결되지 않았습니다.');
     const old=distRecord(m),note=document.getElementById('v39DistNote')?.value.trim()||'';
     const payload={clan_id:CLOUD_CLAN_ID,member_id:String(m[4]||m[0]),nickname:m[0],amount:+old.amount||0,paid:!!old.paid,paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note,time_class:old.time_class||''};
-    if(window.__v39Dist.backend==='dedicated'){
-      const q=old.id?cloudClient.from(V39.payTable).update(payload).eq('id',old.id):cloudClient.from(V39.payTable).upsert(payload,{onConflict:'clan_id,member_id'});
-      const {error}=await q;if(error)return safeToast('특이사항 저장 실패: '+error.message);
-    }else{
-      window.__v39Dist.payments[distKey(m)]=payload;
-      try{await savePrivateState()}catch(e){return safeToast('특이사항 저장 실패: '+e.message)}
-    }
-    await loadDist();closeModal();const active=document.querySelector('#tabs button.active');if(active)showPage('memo',active);safeToast('특이사항을 저장했습니다.');
+    window.__v39Dist.ready=true;window.__v39Dist.payments=window.__v39Dist.payments||{};
+    window.__v39Dist.payments[distKey(m)]=payload;
+    const local=localMemo();local.allocations=local.allocations||{};local.allocations[m[0]]=payload.amount;
+    local.distributionNotes=local.distributionNotes||{};local.distributionNotes[m[0]]=note;store(LS.memo,local);
+    closeModal();safeToast('저장되었습니다.');
+    try{
+      if(window.__v39Dist.backend==='dedicated' && window.cloudClient && cloudReady && cloudUser){
+        const q=old.id?cloudClient.from(V39.payTable).update(payload).eq('id',old.id):cloudClient.from(V39.payTable).upsert(payload,{onConflict:'clan_id,member_id'});
+        const {error}=await q;if(error)console.warn('특이사항 원격 저장:',error);
+      }else if(window.__v39Dist.backend==='private' && window.cloudClient && cloudReady && cloudUser){
+        try{await savePrivateState()}catch(e){console.warn('특이사항 private-state 저장:',e);}
+      }
+    }catch(e){console.warn('특이사항 원격 동기화:',e)}
+    try{await loadDist()}catch(e){console.warn('특이사항 reload:',e)}
+    const active=document.querySelector('#tabs button.active');if(active)showPage('memo',active);
   };
 
   const oldSaveMemo=window.savePrivateMemo;
@@ -1632,24 +1629,23 @@ window.updateParticipantSummary=function(){
     const note=String(input?.value||'').trim(), old=record(m);
     const payload={clan_id:CLOUD_CLAN_ID,member_id:String(m[4]||m[0]),nickname:m[0],amount:Number(old.amount)||Number(input?.closest('.v405-row')?.querySelector('[data-alloc]')?.value)||0,paid:!!old.paid,paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note,time_class:old.time_class||''};
     try{
-      // 메모는 먼저 로컬에 저장해 두고, 서버가 연결되어 있으면 백업한다.
-      window.__v39Dist.payments=window.__v39Dist.payments||{};
-      window.__v39Dist.payments[distKey(m)]=payload;
+      window.__v39Dist.ready=true;window.__v39Dist.payments=window.__v39Dist.payments||{};
+      window.__v39Dist.payments[String(m?.[4]??m?.[0]??'')]=payload;
       const data=readLS('ddunteam.memo.v34',{diamond:0,allocations:{},timeClass:{},notes:''})||{};
       data.allocations=data.allocations||{};data.timeClass=data.timeClass||{};
       data.allocations[m[0]]=payload.amount;
-      data.distributionNotes=data.distributionNotes||{};
-      data.distributionNotes[m[0]]=note;
+      data.distributionNotes=data.distributionNotes||{};data.distributionNotes[m[0]]=note;
       writeLS('ddunteam.memo.v34',data);
-
+      input.dataset.saved=note;input.classList.remove('note-dirty');
+      safeToast('저장되었습니다.');
       if(window.__v39Dist?.backend==='dedicated' && window.cloudClient && cloudReady && cloudUser){
-        const q=old.id?window.cloudClient.from('clan_distribution_payments').update(payload).eq('id',old.id):window.cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'});
-        const r=await q;if(r.error)console.warn('distribution note remote save:',r.error);
+        try{
+          const q=old.id?window.cloudClient.from('clan_distribution_payments').update(payload).eq('id',old.id):window.cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'});
+          const r=await q;if(r.error)console.warn('distribution note remote save:',r.error);
+        }catch(e){console.warn('distribution note remote save:',e)}
       }else if(window.__v39Dist?.backend==='private' && window.cloudClient && cloudReady && cloudUser){
         try{await savePrivateState();}catch(e){console.warn('distribution note private-state save:',e);}
       }
-      input.dataset.saved=note; input.classList.remove('note-dirty');
-      safeToast('저장되었습니다.');
     }catch(e){
       console.error('distribution note save:',e);
       safeToast('저장 중 오류가 발생했습니다.');
