@@ -130,7 +130,6 @@ const defaultCategories=[
   {id:"members",label:"♙ 인원 관리",order:2,visible:true},
   {id:"memo",label:"▤ 뚠뚠 메모장",order:3,visible:true},
   {id:"inventory",label:"⬟ 보유 혈맹 리스트",order:4,visible:true},
-  {id:"items",label:"◆ 아이템 분배 관리",order:5,visible:true},
   {id:"minigame",label:"🎮 미니 게임",order:6,visible:true},
   {id:"misc",label:"◆ 잡지식",order:7,visible:true},
   {id:"enemy",label:"☷ 적 리스트",order:7,visible:true}
@@ -147,7 +146,7 @@ try{
 }catch(e){}
 function renderTabs(activeId="main"){
   const tabs=document.getElementById("tabs");
-  const role=isPageOwner()?"페이지 소유자":rankOf(currentNick); const ordered=categories.filter(c=>c.id!=="main"&&c.visible!==false&&(role==="페이지 소유자"||(c.allowedRoles||[]).includes(role))).sort((a,b)=>a.order-b.order);
+  const role=isPageOwner()?"페이지 소유자":rankOf(currentNick); const ordered=categories.filter(c=>c.id!=="main"&&c.id!=="items"&&c.visible!==false&&(role==="페이지 소유자"||(c.allowedRoles||[]).includes(role))).sort((a,b)=>a.order-b.order);
   const all=[categories.find(c=>c.id==="main"),...ordered];
   tabs.innerHTML=all.map(c=>'<button class="'+(c.id===activeId?"active":"")+'" onclick="showPage(\''+c.id+'\',this)">'+c.label+'</button>').join("");
   const edit=document.getElementById("categoryEditBtn");
@@ -156,7 +155,7 @@ function renderTabs(activeId="main"){
 }
 function openCategoryOrder(){
   if(!canSiteEdit()) return toast("사이트 수정은 페이지 소유자만 가능합니다.");
-  const ordered=categories.filter(c=>!c.fixed).sort((a,b)=>a.order-b.order);
+  const ordered=categories.filter(c=>!c.fixed&&c.id!=="items").sort((a,b)=>a.order-b.order);
   openModal('<div class="modal-head"><div><h3>카테고리 순서 관리</h3><div class="banner-sub">1이 가장 왼쪽입니다. 메인은 고정됩니다.</div></div><button class="close" onclick="closeModal()">×</button></div>'+
     '<div class="order-help">각 카테고리의 order 값을 입력해 원하는 순서로 배치할 수 있습니다. 중복 값은 저장 시 자동으로 정리됩니다.</div>'+
     '<div class="order-list"><div class="order-head"><span>메뉴</span><span>출력</span><span>접근 권한</span><span>순서</span></div>'+
@@ -166,12 +165,12 @@ function openCategoryOrder(){
 }
 function saveCategoryOrder(){
   if(!canManage()) return toast("권한이 없습니다.");
-  const values=categories.filter(c=>!c.fixed).map(c=>({id:c.id,value:+document.getElementById("order-"+c.id).value,visible:document.getElementById("visible-"+c.id).checked,allowedRoles:[...document.querySelectorAll('.menu-role[data-menu="'+c.id+'"]:checked')].map(e=>e.value)}));
+  const values=categories.filter(c=>!c.fixed&&c.id!=="items").map(c=>({id:c.id,value:+document.getElementById("order-"+c.id).value,visible:document.getElementById("visible-"+c.id).checked,allowedRoles:[...document.querySelectorAll('.menu-role[data-menu="'+c.id+'"]:checked')].map(e=>e.value)}));
   if(values.some(x=>!Number.isInteger(x.value)||x.value<1)) return toast("order는 1 이상의 정수로 입력해주세요.");
   const sorted=values.sort((a,b)=>a.value-b.value);
   sorted.forEach((x,i)=>{const c=categories.find(c=>c.id===x.id);c.order=i+1;c.visible=x.visible;c.allowedRoles=x.allowedRoles.length?x.allowedRoles:["군주","관리자","수호","일반"];});
   localStorage.setItem("clanCategories",JSON.stringify(categories));
-  const menuAccess={};categories.filter(c=>!c.fixed).forEach(c=>menuAccess[c.id]=c.allowedRoles||["군주","관리자","수호","일반"]);localStorage.setItem("clanMenuAccess",JSON.stringify(menuAccess));
+  const menuAccess={};categories.filter(c=>!c.fixed&&c.id!=="items").forEach(c=>menuAccess[c.id]=c.allowedRoles||["군주","관리자","수호","일반"]);localStorage.setItem("clanMenuAccess",JSON.stringify(menuAccess));
   renderTabs("main");
   closeModal();
   showPage("main",document.querySelector('#tabs button'));
@@ -305,6 +304,7 @@ function saveClanMessage(){
   closeModal();toast("혈맹 남긴말을 저장했습니다.");
 }
 function showPage(page,btn){
+  if(page==="items"){page="memo";btn=[...document.querySelectorAll("#tabs button")].find(b=>/메모장/.test(b.textContent||""))||btn;}
   renderTabs(page);
   const dashboard=document.getElementById("dashboard");
   const banner=document.querySelector(".banner");
@@ -631,7 +631,7 @@ async function saveClanMessage(){
 
 async function saveCategoryOrder(){
   if(!canManage())return toast('권한이 없습니다.');
-  const values=categories.filter(c=>!c.fixed).map(c=>({id:c.id,value:+document.getElementById('order-'+c.id).value}));
+  const values=categories.filter(c=>!c.fixed&&c.id!=="items").map(c=>({id:c.id,value:+document.getElementById('order-'+c.id).value}));
   if(values.some(x=>!Number.isInteger(x.value)||x.value<1))return toast('order는 1 이상의 정수로 입력해주세요.');
   values.sort((a,b)=>a.value-b.value).forEach((x,i)=>{const c=categories.find(c=>c.id===x.id);c.order=i+1;});
   for(const c of categories.filter(x=>!x.fixed)){const {error}=await cloudClient.from('clan_categories').update({order_value:c.order}).eq('clan_id',CLOUD_CLAN_ID).eq('category_key',c.id);if(error)return cloudErr(error)}
@@ -3222,17 +3222,23 @@ window.updateParticipantSummary=function(){
   if(typeof prev==='function' && !window.__v406PermissionRouterWrapped){
     window.__v406PermissionRouterWrapped=true;
     window.showPage=function(page,btn){
-      if(page==='memo'){
-        try{
-          const extra=document.getElementById('extraPage');
-          if(extra && window.canMemoAccess() && typeof window.__v402RenderMemo==='function'){
-            const r=prev.apply(this,arguments);
-            setTimeout(function(){try{window.__v402RenderMemo();}catch(e){console.error('memo render',e);}},0);
-            return r;
-          }
-        }catch(e){console.error('memo route',e);}
+      if(page==='items'){
+        const memoBtn=[...document.querySelectorAll('#tabs button')].find(b=>/메모장/.test(b.textContent||''))||btn;
+        const r=prev.call(this,'memo',memoBtn);
+        setTimeout(function(){try{if(window.canMemoAccess()&&typeof window.__v406RenderDistribution==='function')window.__v406RenderDistribution();}catch(e){console.error('memo distribution render',e);}},0);
+        return r;
       }
-      return prev.apply(this,arguments);
+      const r=prev.apply(this,arguments);
+      if(page==='memo'){
+        setTimeout(function(){
+          try{
+            if(window.canMemoAccess() && typeof window.__v406RenderDistribution==='function'){
+              window.__v406RenderDistribution();
+            }
+          }catch(e){console.error('memo distribution render',e);}
+        },0);
+      }
+      return r;
     };
   }
   // If the memo tab is already active when this patch loads, repaint it.
@@ -3240,7 +3246,7 @@ window.updateParticipantSummary=function(){
     document.addEventListener('DOMContentLoaded',function(){
       try{
         const b=document.querySelector('#tabs button.active');
-        if(b && /메모장/.test(b.textContent||'') && window.canMemoAccess() && typeof window.__v402RenderMemo==='function') window.__v402RenderMemo();
+        if(b && /메모장/.test(b.textContent||'') && window.canMemoAccess() && typeof window.__v406RenderDistribution==='function') window.__v406RenderDistribution();
       }catch(e){}
     },{once:true});
   }

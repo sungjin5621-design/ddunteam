@@ -1,5 +1,6 @@
-뚠뚠팀 v40.6 AUTH-FIX2
-- 기존 로그인 세션이 있으면 새로고침/익명 세션 소실 때문에 로그인 화면으로 무한 복귀하지 않도록 자동 세션 복구
-- Supabase 일시 오류 시 기존 로컬 세션으로 앱 진입 유지
-- 기존 분배금/메모 기능 코드 유지
-배포: index.html만 기존 프로젝트의 index.html과 교체
+v40.6 MEMO DIST FIX
+- Distribution management is now rendered under the "뚠뚠 메모장" tab.
+- Legacy "아이템 분배 관리" tab is hidden even when an older local menu configuration exists.
+- Accessing the legacy items route redirects to the memo page.
+- The working v40.6 distribution renderer is used on the memo page.
+- Existing DB/local persistence and other features are preserved.
