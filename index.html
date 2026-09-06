@@ -107,9 +107,17 @@ try{
     });
   }
 }catch(e){}
+const CANONICAL_CATEGORY_ORDER=["letter","members","memo","inventory","items","misc","enemy"];
+function migrateCategoryOrderV371(){
+  const key='ddunteam.categoryOrder.v371';
+  if(localStorage.getItem(key)==='1')return;
+  categories.forEach(c=>{const idx=CANONICAL_CATEGORY_ORDER.indexOf(c.id);if(idx>=0)c.order=idx+1;});
+  try{localStorage.setItem('clanCategories',JSON.stringify(categories));localStorage.setItem('ddunteam.categories.v34',JSON.stringify(categories));localStorage.setItem(key,'1');}catch(e){}
+}
 function renderTabs(activeId="main"){
   const tabs=document.getElementById("tabs");
-  const ordered=categories.filter(c=>c.id!=="main"&&c.visible!==false).sort((a,b)=>a.order-b.order);
+  migrateCategoryOrderV371();
+  const ordered=categories.filter(c=>c.id!=="main"&&c.visible!==false).sort((a,b)=>a.order-b.order||CANONICAL_CATEGORY_ORDER.indexOf(a.id)-CANONICAL_CATEGORY_ORDER.indexOf(b.id));
   const all=[categories.find(c=>c.id==="main"),...ordered];
   tabs.innerHTML=all.map(c=>'<button class="'+(c.id===activeId?"active":"")+'" onclick="showPage(\''+c.id+'\',this)">'+c.label+'</button>').join("");
   const edit=document.getElementById("categoryEditBtn");
@@ -358,8 +366,7 @@ async function cloudLoad(){
     cloudClient.from('clan_distribution_settings').select('*').eq('clan_id',CLOUD_CLAN_ID).maybeSingle()
   ]);
   for(const r of [c,m,n,s,k])if(r.error)return cloudErr(r.error);
-  if(d.error){console.warn('clan_distribution_payments unavailable:',d.error.message);distributionPayments={};}
-  else distributionPayments=Object.fromEntries((d.data||[]).map(x=>[String(x.member_id||x.nickname),x]));
+  if(d.error){console.warn('clan_distribution_payments unavailable:',d.error.message);distributionPayments={};window.distributionDbReady=false;} else {window.distributionDbReady=true;distributionPayments=Object.fromEntries((d.data||[]).map(x=>[String(x.member_id||x.nickname),x]));}
   if(dm.error){console.warn('clan_distribution_settings unavailable:',dm.error.message);distributionSettings={diamond:0,notes:''};}
   else distributionSettings=dm.data||{diamond:0,notes:''};
   cloudOwnerId=c.data.owner_user_id;
@@ -617,7 +624,7 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
       const mq=cloudClient.from('clan_distribution_settings').upsert(meta,{onConflict:'clan_id'}).select('*').maybeSingle();
       const paymentRows=members.filter(m=>+m[1]!==100).map(m=>{const old=distributionRecord(m);return {clan_id:CLOUD_CLAN_ID,member_id:m[4]||null,nickname:m[0],amount:allocations[m[0]]||0,paid:!!old.paid,paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note:old.note||'',time_class:timeClass[m[0]]||''};});
       const [mr,pr]=await Promise.all([mq,cloudClient.from('clan_distribution_payments').upsert(paymentRows,{onConflict:'clan_id,member_id'}).select('*')]);
-      if(mr.error)return cloudErr(mr.error);if(pr.error)return cloudErr(pr.error);
+      if(mr.error)return distributionDbError(mr.error);if(pr.error)return distributionDbError(pr.error);
       await cloudRefresh();toast('뚠뚠 메모장을 저장했습니다.');return;
     }
     toast('뚠뚠 메모장을 저장했습니다.');
@@ -627,8 +634,13 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
     const m=members.find(x=>String(x[4]||x[0])===String(memberId));if(!m)return toast('혈맹원을 찾을 수 없습니다.');
     const key=String(m[4]||m[0]),old=distributionRecord(m),paid=!old.paid;
     const payload={clan_id:CLOUD_CLAN_ID,member_id:m[4]||null,nickname:m[0],amount:+document.querySelector(`[data-alloc=\"${CSS.escape(m[0])}\"]`)?.value||+old.amount||0,paid,paid_at:paid?new Date().toISOString():null,paid_by_user_id:paid&&cloudUser?cloudUser.id:null,paid_by_nickname:paid?currentNick:null,note:old.note||'',time_class:document.querySelector(`[data-time=\"${CSS.escape(m[0])}\"]`)?.value||old.time_class||''};
-    if(typeof cloudReady!=='undefined'&&cloudReady){const q=old.id?cloudClient.from('clan_distribution_payments').update(payload).eq('id',old.id).select('*').maybeSingle():cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'}).select('*').maybeSingle();const {data,error}=await q;if(error)return cloudErr(error);if(!data)return toast('지급 상태가 저장되지 않았습니다. Supabase 권한(RLS)을 확인해주세요.');await cloudRefresh();return;}
+    if(typeof cloudReady!=='undefined'&&cloudReady){const q=old.id?cloudClient.from('clan_distribution_payments').update(payload).eq('id',old.id).select('*').maybeSingle():cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'}).select('*').maybeSingle();const {data,error}=await q;if(error)return distributionDbError(error);if(!data)return toast('지급 상태가 저장되지 않았습니다. Supabase 권한(RLS)을 확인해주세요.');await cloudRefresh();return;}
     distributionPayments[key]={...old,...payload,id:old.id||key};const active=document.querySelector('#tabs button.active');if(active)showPage('memo',active);
+  };
+  window.distributionDbError=function(error){
+    const msg=String(error?.message||error||'');
+    if(msg.includes('clan_distribution_payments')||msg.includes('schema cache')) return toast('분배금 DB가 아직 준비되지 않았습니다. Supabase SQL을 먼저 실행해주세요.');
+    return cloudErr(error);
   };
   window.openDistributionNote=function(memberId){
     if(!isPageOwner()&&rankOf(currentNick)!=='군주')return toast('소유자와 군주만 사용할 수 있습니다.');
@@ -641,7 +653,7 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
     const m=members.find(x=>String(x[4]||x[0])===String(memberId));if(!m)return;
     const r=distributionRecord(m),note=document.getElementById('distributionNote').value.trim();
     const payload={clan_id:CLOUD_CLAN_ID,member_id:m[4]||null,nickname:m[0],amount:+document.querySelector(`[data-alloc=\"${CSS.escape(m[0])}\"]`)?.value||+r.amount||0,paid:!!r.paid,paid_at:r.paid_at||null,paid_by_user_id:r.paid_by_user_id||null,paid_by_nickname:r.paid_by_nickname||null,note,time_class:r.time_class||''};
-    if(typeof cloudReady!=='undefined'&&cloudReady){const q=r.id?cloudClient.from('clan_distribution_payments').update(payload).eq('id',r.id).select('*').maybeSingle():cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'}).select('*').maybeSingle();const {data,error}=await q;if(error)return cloudErr(error);if(!data)return toast('메모가 저장되지 않았습니다. Supabase 권한(RLS)을 확인해주세요.');await cloudRefresh();closeModal();return;}
+    if(typeof cloudReady!=='undefined'&&cloudReady){const q=r.id?cloudClient.from('clan_distribution_payments').update(payload).eq('id',r.id).select('*').maybeSingle():cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'}).select('*').maybeSingle();const {data,error}=await q;if(error)return distributionDbError(error);if(!data)return toast('메모가 저장되지 않았습니다. Supabase 권한(RLS)을 확인해주세요.');await cloudRefresh();closeModal();return;}
     distributionPayments[String(m[4]||m[0])]={...r,...payload,id:r.id||String(m[4]||m[0])};closeModal();const active=document.querySelector('#tabs button.active');if(active)showPage('memo',active);toast('특이사항을 저장했습니다.');
   };
 
@@ -708,6 +720,7 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
   document.addEventListener('DOMContentLoaded',()=>{
     /* Remove legacy hidden pages from category state. */
     categories=categories.filter(c=>c.id!=='calendar'&&c.id!=='schedule');
+    normalizeCategoryOrder();
     renderTabs('main');
   });
 })();
