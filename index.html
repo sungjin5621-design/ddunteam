@@ -820,6 +820,44 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
   window.savePrivateMemo=function(){if(!isPageOwner()&&rankOf(currentNick)!=='군주')return toast('소유자와 군주만 사용할 수 있습니다.');const d={diamond:+document.getElementById('memoDiamond').value||0,allocations:{},timeClass:{},notes:document.getElementById('privateNotes').value.trim()};document.querySelectorAll('[data-alloc]').forEach(e=>d.allocations[e.dataset.alloc]=+e.value||0);document.querySelectorAll('[data-time]').forEach(e=>d.timeClass[e.dataset.time]=e.value);store(LS.memo,d);toast('뚠뚠 메모장을 저장했습니다.');};
 
   /* Clan inventory page. */
+  const INVENTORY_STATE_KEY='inventory';
+  let inventorySyncBusy=false;
+  async function loadInventoryShared(){
+    const local=load(LS.inventory,{});
+    if(typeof cloudClient==='undefined'||!cloudClient||typeof CLOUD_CLAN_ID==='undefined') return local;
+    try{
+      const r=await cloudClient.from('clan_private_state').select('payload,updated_at').eq('clan_id',CLOUD_CLAN_ID).eq('state_key',INVENTORY_STATE_KEY).maybeSingle();
+      if(r.error) throw r.error;
+      if(r.data?.payload && typeof r.data.payload==='object' && !Array.isArray(r.data.payload)){
+        store(LS.inventory,r.data.payload);
+        window.__inventoryServerSnapshot=JSON.parse(JSON.stringify(r.data.payload));
+        return r.data.payload;
+      }
+      // First migration: only create the shared row when it does not exist.
+      if(Object.keys(local||{}).length){
+        const u=await cloudClient.from('clan_private_state').upsert({clan_id:CLOUD_CLAN_ID,state_key:INVENTORY_STATE_KEY,payload:local,updated_at:new Date().toISOString()},{onConflict:'clan_id,state_key'});
+        if(u.error) throw u.error;
+        window.__inventoryServerSnapshot=JSON.parse(JSON.stringify(local));
+      }
+      return local;
+    }catch(e){console.warn('inventory shared load failed',e);return local;}
+  }
+  async function syncInventoryShared(){
+    if(inventorySyncBusy || !document.querySelector('.inventory-server-grid') || typeof cloudClient==='undefined'||!cloudClient)return;
+    inventorySyncBusy=true;
+    try{
+      const r=await cloudClient.from('clan_private_state').select('payload,updated_at').eq('clan_id',CLOUD_CLAN_ID).eq('state_key',INVENTORY_STATE_KEY).maybeSingle();
+      if(r.error) throw r.error;
+      const incoming=(r.data?.payload && typeof r.data.payload==='object'&&!Array.isArray(r.data.payload))?r.data.payload:{};
+      const current=load(LS.inventory,{});
+      if(JSON.stringify(incoming)!==JSON.stringify(current)){
+        store(LS.inventory,incoming);
+        window.__inventoryServerSnapshot=JSON.parse(JSON.stringify(incoming));
+        const active=document.querySelector('#tabs button.active');
+        showPage('inventory',active);
+      }
+    }catch(e){console.warn('inventory realtime sync failed',e)}finally{inventorySyncBusy=false;}
+  }
   window.renderInventory=function(){
     const data=load(LS.inventory,{});const grouped={};servers.forEach(s=>grouped[s]=data[s]||null);let currentWorld=window._inventoryWorld||serverRegions[0];
     return `<div class="card data-page"><div class="head"><div><div class="title">⬟ 보유 혈맹 리스트</div><div class="admin-sub">서버 이전을 다니며 남겨둔 혈맹을 기록합니다.</div></div><button class="ghost" onclick="openInventoryEditor()">+ 혈맹 기록 추가</button></div><div class="inventory-worlds">${serverRegions.map(w=>`<button class="${w===currentWorld?'active':''}" onclick="window._inventoryWorld='${w}';showPage('inventory',document.querySelector('#tabs button.active'))">${w}</button>`).join('')}</div><div class="inventory-server-grid">${Array.from({length:10},(_,i)=>{const s=currentWorld+' '+String(i+1).padStart(2,'0'),x=grouped[s];return `<div class="inventory-card ${x?'has-data':''}"><div class="inv-server">${s}</div>${x?`<b>${escapeHtml(x.name)}</b><span>소유 캐릭: ${escapeHtml(x.owner)}</span><span>서버 이전: ${escapeHtml(x.date||'-')}</span><span>${escapeHtml(x.memo||'')}</span><div class="inv-actions"><button onclick="openInventoryEditor('${s}')">수정</button><button class="danger" onclick="deleteInventory('${s}')">삭제</button></div>`:`<div class="inv-empty">기록 없음</div><button class="mini" onclick="openInventoryEditor('${s}')">기록 추가</button>`}</div>`}).join('')}</div></div>`;
@@ -829,8 +867,40 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
   window.pickInvWorld=function(w){window._invWorldPick=w;const parent=window._invParent;openModal(`<div class="modal-head"><h3>${w} 서버 선택</h3><button class="close" onclick="restoreInvPicker()">×</button></div><div class="server-list-grid">${Array.from({length:10},(_,i)=>`<button onclick="pickInvServer('${w} ${String(i+1).padStart(2,'0')}')">${w} ${String(i+1).padStart(2,'0')}</button>`).join('')}</div>`,'wide');};
   window.pickInvServer=function(s){const p=window._invParent;restoreInvPicker();document.getElementById('invServer').value=s;document.querySelector('.server-select-display').textContent=s;};
   window.restoreInvPicker=function(){if(!window._invParent)return closeModal();const e=document.getElementById('modal');e.className=window._invParent.cls;e.innerHTML=window._invParent.parent;window._invParent=null;};
-  window.saveInventory=function(){const data=load(LS.inventory,{}),s=document.getElementById('invServer').value;data[s]={name:document.getElementById('invName').value.trim(),owner:document.getElementById('invOwner').value.trim(),date:document.getElementById('invDate').value,memo:document.getElementById('invMemo').value.trim()};store(LS.inventory,data);closeModal();showPage('inventory',document.querySelector('#tabs button.active'));toast('보유 혈맹 기록을 저장했습니다.');};
-  window.deleteInventory=function(s){if(!confirm(s+' 기록을 삭제할까요?'))return;const d=load(LS.inventory,{});delete d[s];store(LS.inventory,d);showPage('inventory',document.querySelector('#tabs button.active'));};
+  window.saveInventory=async function(){
+    const s=document.getElementById('invServer').value;
+    const value={name:document.getElementById('invName').value.trim(),owner:document.getElementById('invOwner').value.trim(),date:document.getElementById('invDate').value,memo:document.getElementById('invMemo').value.trim()};
+    try{
+      let data=await loadInventoryShared();
+      data={...(data||{})}; data[s]=value;
+      if(typeof cloudClient!=='undefined'&&cloudClient){
+        const u=await cloudClient.from('clan_private_state').upsert({clan_id:CLOUD_CLAN_ID,state_key:INVENTORY_STATE_KEY,payload:data,updated_at:new Date().toISOString()},{onConflict:'clan_id,state_key'});
+        if(u.error) throw u.error;
+      }
+      store(LS.inventory,data);window.__inventoryServerSnapshot=JSON.parse(JSON.stringify(data));
+      closeModal();showPage('inventory',document.querySelector('#tabs button.active'));toast('보유 혈맹 기록을 저장했습니다.');
+    }catch(e){toast('보유 혈맹 저장에 실패했습니다.');console.error(e)}
+  };
+  window.deleteInventory=async function(s){
+    if(!confirm(s+' 기록을 삭제할까요?'))return;
+    try{
+      let d=await loadInventoryShared();d={...(d||{})};delete d[s];
+      if(typeof cloudClient!=='undefined'&&cloudClient){
+        const u=await cloudClient.from('clan_private_state').upsert({clan_id:CLOUD_CLAN_ID,state_key:INVENTORY_STATE_KEY,payload:d,updated_at:new Date().toISOString()},{onConflict:'clan_id,state_key'});
+        if(u.error) throw u.error;
+      }
+      store(LS.inventory,d);window.__inventoryServerSnapshot=JSON.parse(JSON.stringify(d));
+      showPage('inventory',document.querySelector('#tabs button.active'));toast('보유 혈맹 기록을 삭제했습니다.');
+    }catch(e){toast('보유 혈맹 삭제에 실패했습니다.');console.error(e)}
+  };
+  // Inventory page: Realtime when available + polling fallback so A/B browsers converge even if
+  // postgres_changes is not enabled for clan_private_state.
+  try{if(typeof cloudClient!=='undefined'&&cloudClient){
+    cloudClient.channel('ddunteam-inventory-live').on('postgres_changes',{event:'*',schema:'public',table:'clan_private_state',filter:'clan_id=eq.ddunteam'},async(payload)=>{
+      if(payload?.new?.state_key===INVENTORY_STATE_KEY || payload?.old?.state_key===INVENTORY_STATE_KEY) await syncInventoryShared();
+    }).subscribe();
+  }}catch(e){console.warn('inventory realtime subscribe failed',e)}
+  setInterval(syncInventoryShared,2000);
 
   /* Item distribution page. */
   window.renderItems=function(){const data=load(LS.items,[]);return `<div class="card data-page"><div class="head"><div><div class="title">◆ 아이템 분배 관리</div><div class="admin-sub">보스 드랍 아이템을 어떤 캐릭터에게 밀어주고 있는지 관리합니다.</div></div><button class="ghost" onclick="addItemRow()">+ 아이템 추가</button></div><div class="item-table"><div class="item-head"><span>아이템명</span><span>등급</span><span>용도</span><span>캐릭터</span><span>진행도</span><span></span></div><div id="itemRows">${data.map((x,i)=>itemRow(x,i)).join('')}</div></div><div class="modal-actions"><button class="primary" onclick="saveItems()">저장</button></div></div>`};
@@ -855,7 +925,7 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
     if(page==='letter')extra.innerHTML=renderLetters();
     else if(page==='members'){renderMembersPage();}
     else if(page==='memo'){if(typeof window.__v402RenderMemo==='function'){window.__v402RenderMemo();}else{extra.innerHTML=renderPrivateMemo();}}
-    else if(page==='inventory'){extra.innerHTML=renderInventory();}
+    else if(page==='inventory'){extra.innerHTML=renderInventory();setTimeout(()=>loadInventoryShared().then(()=>{if(document.querySelector('.inventory-server-grid'))extra.innerHTML=renderInventory();}),0);}
     else if(page==='items'){extra.innerHTML=renderItems();}
     else if(page==='minigame'){renderMiniGamesV368();}
     else if(page==='misc'||page==='enemy')extra.innerHTML=`<div class="card menu-page"><div class="head"><div class="title">${escapeHtml(btn?.textContent||page)}</div></div><div class="menu-placeholder">이 메뉴의 상세 기능은 준비 중입니다.</div></div>`;
@@ -3493,5 +3563,71 @@ window.updateParticipantSummary=function(){
       }catch(e){}
     },{once:true});
   }
+})();
+</script>
+
+<style id="v412-season-tabs-css">
+.v412-season-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:14px 0 10px;padding:8px 9px;border:1px solid #293440;border-radius:9px;background:#0a1017}
+.v412-season-label{font-size:11px;font-weight:800;color:#8491a4;margin-right:3px}
+.v412-season-tab,.v412-season-action{border:1px solid #2b3948;background:#0b1119;color:#cbd5e3;border-radius:7px;padding:7px 10px;font-size:11px;cursor:pointer}
+.v412-season-tab.active{border-color:#5d8bb8;background:#183149;color:#fff}
+.v412-season-actions{margin-left:auto;display:flex;gap:5px}
+.v412-season-action:hover,.v412-season-tab:hover{border-color:#55708d}
+@media(max-width:700px){.v412-season-actions{margin-left:0;width:100%}}
+</style>
+<script id="v412-season-distribution">
+(function(){
+  'use strict';
+  const KEY='distribution_seasons';
+  const LEGACY='distribution';
+  const LOCAL='ddunteam.distribution.v412';
+  let storeState=null, loaded=false, busy=false;
+  const esc=v=>typeof escapeHtml==='function'?escapeHtml(String(v??'')):String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
+  const canUse=()=>typeof cloudClient!=='undefined'&&cloudClient&&typeof CLOUD_CLAN_ID!=='undefined';
+  const canView=()=>{try{return isPageOwner()||rankOf(currentNick)==='군주'||rankOf(currentNick)==='관리자'||rankOf(currentNick)==='수호'}catch(e){return true}};
+  const toastMsg=m=>{try{toast(m)}catch(e){console.log(m)}};
+  const clone=x=>JSON.parse(JSON.stringify(x));
+  const emptySeason=()=>({diamond:0,payments:{},timeClass:{}});
+  const normSeason=x=>{const o=emptySeason(),v=x&&typeof x==='object'?x:{};o.diamond=Number(v.diamond??v.settings?.diamond)||0;o.payments=v.payments&&typeof v.payments==='object'&&!Array.isArray(v.payments)?v.payments:{};o.timeClass=v.timeClass&&typeof v.timeClass==='object'?v.timeClass:{};return o};
+  const normStore=x=>{const v=x&&typeof x==='object'?x:{};const seasons={};if(v.seasons&&typeof v.seasons==='object')Object.keys(v.seasons).forEach(k=>seasons[k]=normSeason(v.seasons[k]));return {version:412,activeSeason:String(v.activeSeason||Object.keys(seasons)[0]||'1시즌'),seasons,globalNotes:Array.isArray(v.globalNotes)?v.globalNotes:[]};};
+  const localGet=()=>{try{return JSON.parse(localStorage.getItem(LOCAL)||'null')}catch(e){return null}};
+  const localSet=v=>{try{localStorage.setItem(LOCAL,JSON.stringify(v))}catch(e){}};
+  const memberId=m=>String(m?.[4]??m?.[0]??'');
+  function membersOrdered(){let a=(Array.isArray(members)?members:[]).filter(m=>Number(m?.[1])!==100);try{if(typeof window.getOrderedMembers==='function')a=window.getOrderedMembers(a.slice())}catch(e){}return a}
+  function currentName(){return String(localStorage.getItem('ddunteam.v412.activeSeason')||storeState?.activeSeason||'1시즌')}
+  function active(){if(!storeState)return emptySeason();const n=currentName();if(!storeState.seasons[n]){const first=Object.keys(storeState.seasons)[0]||'1시즌';storeState.activeSeason=first;return storeState.seasons[first]||(storeState.seasons[first]=emptySeason())}storeState.activeSeason=n;return storeState.seasons[n]}
+  async function fetchState(key){const r=await cloudClient.from('clan_private_state').select('state_key,payload,updated_at').eq('clan_id',CLOUD_CLAN_ID).eq('state_key',key).maybeSingle();if(r.error)throw r.error;return r.data}
+  async function saveStore(){if(!canUse())return false;const payload=clone(storeState);payload.activeSeason=currentName();const r=await cloudClient.from('clan_private_state').upsert({clan_id:CLOUD_CLAN_ID,state_key:KEY,payload,updated_at:new Date().toISOString()},{onConflict:'clan_id,state_key'});if(r.error)throw r.error;localSet(storeState);return true}
+  async function ensureLoaded(){if(loaded&&storeState)return true;if(!canUse()){storeState=normStore(localGet());if(!Object.keys(storeState.seasons).length)storeState.seasons['1시즌']=emptySeason();loaded=true;return true}
+    const row=await fetchState(KEY);
+    if(row?.payload){storeState=normStore(row.payload);if(!Object.keys(storeState.seasons).length)storeState.seasons['1시즌']=emptySeason();loaded=true;localSet(storeState);return true}
+    // One-time migration from the working v40.6/v40.11 distribution state.
+    let legacy=null;try{const lr=await fetchState(LEGACY);legacy=lr?.payload||null}catch(e){}
+    const s=normSeason(legacy||{});storeState={version:412,activeSeason:'1시즌',seasons:{'1시즌':s},globalNotes:Array.isArray(legacy?.notes)?legacy.notes:[]};loaded=true;await saveStore();return true;
+  }
+  function rec(s,m){return s.payments[memberId(m)]||s.payments[String(m?.[0]||'')]||{amount:0,paid:false,note:''}}
+  function renderHistory(){const box=document.getElementById('v412History');if(!box)return;const list=Array.isArray(storeState?.globalNotes)?storeState.globalNotes:[];box.innerHTML=list.length?list.slice().reverse().map((x,ri)=>{const idx=list.length-1-ri,dt=new Date(x.createdAt);return `<div class="v406-post"><div class="v406-post-meta"><strong>${esc(x.author||'작성자')}</strong><time>${isNaN(dt)?'':dt.toLocaleString('ko-KR')}</time><button class="mini" type="button" onclick="v412DeleteOp(${idx})">삭제</button></div><div class="v406-post-body">${esc(x.text||'')}</div></div>`}).join(''):'<div class="v406-empty">아직 등록된 운영 메모가 없습니다.</div>'}
+  function render(){const extra=document.getElementById('extraPage');if(!extra)return;if(!canView()){extra.innerHTML='<div class="card data-page"><div class="permission">페이지 소유자 · 군주 · 관리자 · 수호만 열람할 수 있습니다.</div></div>';return}const s=active(),rows=membersOrdered(),paid=rows.filter(m=>!!rec(s,m).paid),total=rows.reduce((a,m)=>a+(Number(rec(s,m).amount)||0),0),paidAmount=paid.reduce((a,m)=>a+(Number(rec(s,m).amount)||0),0),remain=(Number(s.diamond)||0)-total;
+    const tabs=Object.keys(storeState.seasons);
+    const body=rows.map((m,i)=>{const id=memberId(m),r=rec(s,m),p=!!r.paid;return `<div class="v406-row ${p?'paid':''}"><div class="v406-no">${i+1}</div><div><div class="v406-name"><b>${esc(m[0])}</b><span class="v406-status ${p?'done':'todo'}">${p?'🟢 지급완료':'🟡 미지급'}</span></div><div class="v406-meta">${esc(m[2]||'모름')} · Lv.${esc(m[1])}</div></div><div class="v406-amount"><input type="number" min="0" data-v412-amount="${esc(id)}" value="${Number(r.amount)||0}"><b>D</b></div><button type="button" class="mini v406-pay" onclick="v412TogglePaid('${esc(id)}')">${p?'지급취소':'지급'}</button><input class="v406-note" data-v412-note="${esc(id)}" value="${esc(r.note||'')}" placeholder="특이사항 메모를 입력하세요..." onkeydown="if(event.key==='Enter'){event.preventDefault();v412SaveNote(this.dataset.v412Note,this)}" onblur="if(this.value.trim()!==this.dataset.saved)v412SaveNote(this.dataset.v412Note,this)"></div>`}).join('');
+    const seasonBar=`<div class="v412-season-bar"><span class="v412-season-label">📑 시즌</span>${tabs.map(n=>`<button type="button" class="v412-season-tab ${n===currentName()?'active':''}" onclick="v412SelectSeason(${JSON.stringify(n)})">${esc(n)}</button>`).join('')}<div class="v412-season-actions"><button type="button" class="v412-season-action" onclick="v412AddSeason()">＋ 시트 추가</button><button type="button" class="v412-season-action" onclick="v412RenameSeason()">✎ 이름 변경</button><button type="button" class="v412-season-action" onclick="v412DeleteSeason()">− 시트 삭제</button></div></div>`;
+    extra.innerHTML=`<div class="v406-layout"><div class="card data-page v406-main"><div class="v406-head"><div><div class="v406-title">🏆 분배금 관리 <span class="v406-badge">시즌 기록</span></div><div class="v406-sub">혈맹원 분배금 지급 현황을 관리합니다.</div></div><button class="ghost" type="button" onclick="v412SaveAll()">저장</button></div><div class="v406-summary"><label>현재 보유 혈비(다이아)<input id="v412Diamond" type="number" value="${Number(s.diamond)||0}"></label><div><span>총 분배금</span><b>${total.toLocaleString()} D</b></div><div><span>남은 다이아</span><b>${remain.toLocaleString()} D</b></div></div>${seasonBar}<div class="v406-statusline"><span class="done">🟢 지급완료 ${paid.length}명 · ${paidAmount.toLocaleString()} D</span><span class="todo">🟡 미지급 ${rows.length-paid.length}명</span><button class="ghost v406-save" type="button" onclick="v412SaveAll()">저장</button></div><div class="v406-table"><div class="v406-th"><span>#</span><span>닉네임 / 클래스</span><span>분배금 (D)</span><span>지급</span><span>특이사항 메모</span></div>${body||'<div class="v406-empty">혈맹원이 없습니다.</div>'}</div><div class="v406-op"><div class="v406-op-head"><b>운영 메모</b><button class="primary" type="button" onclick="v412PostOp()">글 올리기</button></div><textarea id="v412OpInput" placeholder="운영 관련 내용을 기록해주세요..."></textarea><div id="v412History" class="v406-history"></div></div></div><div class="card data-page v406-side"><div class="head"><div class="title">💰 분배금 계산 요약</div></div><div class="v406-calc"><div><span>혈비</span><b>${(Number(s.diamond)||0).toLocaleString()} D</b></div><div><span>분배금</span><b>${total.toLocaleString()} D</b></div><div class="remain"><span>잔여</span><b>${remain.toLocaleString()} D</b></div><div><span>지급 완료</span><b>${paid.length}명</b></div><div><span>미지급 인원</span><b>${rows.length-paid.length}명</b></div></div><div class="rule-box v406-rules"><b>시간 분류 기준</b><p>👑 12시간 이상 · 언제나 잘 돌아가는 캐릭</p><p>⚔️ 6시간 이상 · 저녁 시간만큼은 꼭 오는 캐릭</p><p>🗡️ 2~3시간 이상 · 메인 타임정도는 오는 캐릭</p><p>🔨 1시간 미만 · 거의 안도는 캐릭</p><p>👹 보스 · 보스 위주로 챙겨주는 캐릭</p><p>💀 해골 · 기변 이슈 + 개인 이슈로 제외 캐릭</p></div></div></div>`;document.querySelectorAll('[data-v412-note]').forEach(e=>e.dataset.saved=e.value.trim());renderHistory();}
+  window.__v412RenderDistribution=async function(){if(busy)return;busy=true;try{await ensureLoaded();render()}catch(e){console.error(e);toastMsg('분배금 시즌 저장소를 불러오지 못했습니다.')}finally{busy=false}};
+  window.v412SelectSeason=async function(name){await ensureLoaded();if(!storeState.seasons[name])return;localStorage.setItem('ddunteam.v412.activeSeason',name);storeState.activeSeason=name;render();};
+  window.v412AddSeason=async function(){if(!canView())return toastMsg('분배금 관리 권한이 없습니다.');await ensureLoaded();const name=prompt('새 시트 이름을 입력하세요.',''+(Object.keys(storeState.seasons).length+1)+'시즌');if(!name||!name.trim())return;const n=name.trim();if(storeState.seasons[n])return toastMsg('같은 이름의 시트가 이미 있습니다.');storeState.seasons[n]=emptySeason();localStorage.setItem('ddunteam.v412.activeSeason',n);try{await saveStore();render();toastMsg('새 시즌 시트를 만들었습니다.')}catch(e){delete storeState.seasons[n];toastMsg('시트 생성에 실패했습니다: '+e.message)}};
+  window.v412RenameSeason=async function(){if(!canView())return toastMsg('분배금 관리 권한이 없습니다.');await ensureLoaded();const old=currentName(),name=prompt('시트 이름을 변경하세요.',old);if(!name||!name.trim()||name.trim()===old)return;const n=name.trim();if(storeState.seasons[n])return toastMsg('같은 이름의 시트가 이미 있습니다.');storeState.seasons[n]=storeState.seasons[old];delete storeState.seasons[old];storeState.activeSeason=n;localStorage.setItem('ddunteam.v412.activeSeason',n);try{await saveStore();render();toastMsg('시트 이름을 변경했습니다.')}catch(e){storeState.seasons[old]=storeState.seasons[n];delete storeState.seasons[n];localStorage.setItem('ddunteam.v412.activeSeason',old);toastMsg('이름 변경에 실패했습니다: '+e.message)}};
+  window.v412DeleteSeason=async function(){if(!canView())return toastMsg('분배금 관리 권한이 없습니다.');await ensureLoaded();const names=Object.keys(storeState.seasons);if(names.length<=1)return toastMsg('최소 1개의 시즌 시트는 남겨야 합니다.');const old=currentName();if(!confirm(`'${old}' 시트를 삭제할까요? 삭제하면 해당 시즌의 분배 기록도 함께 삭제됩니다.`))return;const backup=storeState.seasons[old];delete storeState.seasons[old];const next=Object.keys(storeState.seasons)[0];localStorage.setItem('ddunteam.v412.activeSeason',next);storeState.activeSeason=next;try{await saveStore();render();toastMsg('시트를 삭제했습니다.')}catch(e){storeState.seasons[old]=backup;localStorage.setItem('ddunteam.v412.activeSeason',old);storeState.activeSeason=old;toastMsg('시트 삭제에 실패했습니다: '+e.message)}};
+  window.v412SaveAll=async function(){if(!canView())return toastMsg('분배금 관리 권한이 없습니다.');await ensureLoaded();const s=active();s.diamond=Number(document.getElementById('v412Diamond')?.value)||0;const rows=membersOrdered();document.querySelectorAll('[data-v412-amount]').forEach(el=>{const id=String(el.dataset.v412Amount),m=rows.find(x=>memberId(x)===id);if(!m)return;const r={...rec(s,m)};s.payments[id]={...r,member_id:id,nickname:m[0],amount:Number(el.value)||0}});document.querySelectorAll('[data-v412-note]').forEach(el=>{const id=String(el.dataset.v412Note),m=rows.find(x=>memberId(x)===id);if(!m)return;const r={...rec(s,m)};s.payments[id]={...r,member_id:id,nickname:m[0],note:String(el.value||'').trim()}});try{await saveStore();render();toastMsg('저장되었습니다.')}catch(e){toastMsg('저장에 실패했습니다: '+e.message)}};
+  window.v412TogglePaid=async function(id){if(!canView())return toastMsg('분배금 관리 권한이 없습니다.');await ensureLoaded();const s=active(),m=membersOrdered().find(x=>memberId(x)===String(id));if(!m)return toastMsg('혈맹원을 찾을 수 없습니다.');const r={...rec(s,m)},el=document.querySelector(`[data-v412-amount="${CSS.escape(String(id))}"]`),amt=Number(el?.value)||0;if(r.paid){r.amount=0;r.paid=false;r.paid_at=null;r.paid_by_user_id=null;r.paid_by_nickname=null}else{r.amount=amt;r.paid=true;r.paid_at=new Date().toISOString();r.paid_by_user_id=typeof cloudUser!=='undefined'&&cloudUser?cloudUser.id:null;r.paid_by_nickname=currentNick}r.member_id=String(id);r.nickname=m[0];s.payments[String(id)]=r;try{await saveStore();render();toastMsg(r.paid?'지급되었습니다.':'지급이 취소되었습니다.')}catch(e){toastMsg('지급 상태 저장에 실패했습니다: '+e.message)}};
+  window.v412SaveNote=async function(id,el){if(!canView())return;await ensureLoaded();const s=active(),m=membersOrdered().find(x=>memberId(x)===String(id));if(!m)return;const r={...rec(s,m),note:String(el?.value||'').trim(),member_id:String(id),nickname:m[0]};s.payments[String(id)]=r;try{await saveStore();el.dataset.saved=r.note;toastMsg('저장되었습니다.')}catch(e){toastMsg('특이사항 저장에 실패했습니다: '+e.message)}};
+  window.v412PostOp=async function(){if(!canView())return toastMsg('운영 메모 작성 권한이 없습니다.');await ensureLoaded();const el=document.getElementById('v412OpInput'),text=String(el?.value||'').trim();if(!text)return toastMsg('운영 메모 내용을 입력해주세요.');storeState.globalNotes=Array.isArray(storeState.globalNotes)?storeState.globalNotes:[];storeState.globalNotes.push({id:'op-'+Date.now()+'-'+Math.random().toString(36).slice(2),author:String(currentNick||'작성자'),text,createdAt:new Date().toISOString()});try{await saveStore();el.value='';renderHistory();toastMsg('저장되었습니다.')}catch(e){toastMsg('운영 메모 저장에 실패했습니다: '+e.message)}};
+  window.v412DeleteOp=async function(i){if(!canView())return;await ensureLoaded();if(!confirm('이 운영 메모를 삭제할까요?'))return;storeState.globalNotes.splice(i,1);try{await saveStore();renderHistory();toastMsg('삭제되었습니다.')}catch(e){toastMsg('삭제에 실패했습니다: '+e.message)}};
+  // Keep the new season store synchronized even when Supabase Realtime is unavailable.
+  async function poll(){if(!document.querySelector('.v406-layout')||!canUse()||busy)return;try{const row=await fetchState(KEY);if(!row?.payload)return;const incoming=normStore(row.payload),cur=clone(storeState||{});const activeName=currentName();if(JSON.stringify(incoming)!==JSON.stringify(cur)){storeState=incoming;localSet(storeState);if(storeState.seasons[activeName])localStorage.setItem('ddunteam.v412.activeSeason',activeName);render()}}catch(e){console.warn('v412 season sync',e)}}
+  setInterval(poll,2000);
+  const oldRender=window.__v406RenderDistribution;window.__v406RenderDistribution=async function(){return window.__v412RenderDistribution()};
+  // Force season render whenever the memo page is entered.
+  const old408=window.__v408RenderMemo; if(old408){window.__v408RenderMemo=function(){return window.__v412RenderDistribution()}}
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(()=>{const b=document.querySelector('#tabs button.active');if(b&&/메모장/.test(b.textContent||''))window.__v412RenderDistribution()},300));
 })();
 </script>
