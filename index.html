@@ -1662,7 +1662,7 @@ window.updateParticipantSummary=function(){
   'use strict';
   const STATE_KEY='distribution';
   const LOCAL_KEY='ddunteam.distribution.v406';
-  const canUse=()=>typeof cloudClient!=='undefined'&&cloudClient&&typeof cloudReady!=='undefined'&&cloudReady&&typeof CLOUD_CLAN_ID!=='undefined';
+  const canUse=()=>typeof cloudClient!=='undefined'&&cloudClient&&typeof CLOUD_CLAN_ID!=='undefined';
   const esc=v=>typeof escapeHtml==='function'?escapeHtml(String(v??'')):String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const localGet=()=>{try{return JSON.parse(localStorage.getItem(LOCAL_KEY)||'null')}catch(e){return null}};
   const localSet=v=>{try{localStorage.setItem(LOCAL_KEY,JSON.stringify(v))}catch(e){}};
@@ -1824,7 +1824,33 @@ window.updateParticipantSummary=function(){
     const b=e.target.closest('#v369All');
     if(b){setTimeout(()=>{document.querySelectorAll('.v369-start-row .v369-chip').forEach(x=>x.click());},0);}
   });
-  try{if(typeof cloudClient!=='undefined'&&cloudClient){cloudClient.channel('ddunteam-distribution-clean-v406').on('postgres_changes',{event:'*',schema:'public',table:'clan_private_state',filter:'clan_id=eq.ddunteam'},async()=>{if(document.querySelector('#tabs button.active')?.getAttribute('onclick')?.includes("'items'")){await readServer();render();}}).subscribe();}}catch(e){console.warn(e)}
+  try{if(typeof cloudClient!=='undefined'&&cloudClient){cloudClient.channel('ddunteam-distribution-clean-v406').on('postgres_changes',{event:'*',schema:'public',table:'clan_private_state',filter:'clan_id=eq.ddunteam'},async()=>{if(document.querySelector('.v406-layout')){await readServer();render();}}).subscribe();}}catch(e){console.warn(e)}
+
+  // v40.11: realtime fallback. Supabase Realtime can be unavailable when the table is not
+  // enabled for postgres_changes. Poll the shared row every 2 seconds while distribution
+  // management is open so different users see saved changes without manual refresh.
+  let sharedSyncBusy=false;
+  async function syncSharedNow(){
+    if(sharedSyncBusy || !document.querySelector('.v406-layout') || typeof cloudClient==='undefined' || !cloudClient || typeof CLOUD_CLAN_ID==='undefined') return;
+    sharedSyncBusy=true;
+    try{
+      const r=await cloudClient.from('clan_private_state').select('state_key,payload,updated_at').eq('clan_id',CLOUD_CLAN_ID).eq('state_key',STATE_KEY).maybeSingle();
+      if(r.error) throw r.error;
+      if(!r.data) return;
+      const incoming=normalize(r.data.payload);
+      const current=normalize(state);
+      // Never redraw while an editable distribution field is focused; the user's in-progress
+      // value should not be interrupted. The next poll after blur will pick up the server state.
+      const ae=document.activeElement;
+      if(ae && (ae.matches('[data-v406-amount],[data-v406-note],#v406Diamond,#v406OpInput'))) return;
+      if(JSON.stringify(incoming)!==JSON.stringify(current)){
+        state=incoming; serverSnapshot=cloneState(incoming); localSet(state); loadedFromServer=true; render();
+      }
+    }catch(e){console.warn('v40.11 shared distribution sync failed',e)}
+    finally{sharedSyncBusy=false;}
+  }
+  setInterval(syncSharedNow,2000);
+  window.v406SyncSharedNow=syncSharedNow;
 })();
 </script>
 
