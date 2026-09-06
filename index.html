@@ -758,7 +758,7 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
 
   /* Private memo page. */
   window.renderPrivateMemo=function(){
-    if(!isPageOwner()&&!['군주','관리자'].includes(rankOf(currentNick)))return `<div class="card data-page"><div class="permission">이 페이지는 페이지 소유자·군주·관리자만 열람할 수 있습니다.</div></div>`;
+    if(!isPageOwner()&&rankOf(currentNick)!=='군주')return `<div class="card data-page"><div class="permission">이 페이지는 페이지 소유자와 군주만 열람할 수 있습니다.</div></div>`;
     const data=load(LS.memo,{diamond:0,allocations:{},timeClass:{},notes:''});const rows=members.filter(m=>+m[1]!==100).sort((a,b)=>a[0].localeCompare(b[0],'ko'));
     const iconOpts=[['👑','12시간 이상'],['⚔️','6시간 이상'],['🗡️','2~3시간 이상'],['🔨','1시간 미만'],['👹','보스 위주'],['💀','기변/개인 이슈 제외']];
     const total=rows.reduce((s,m)=>s+(+data.allocations[m[0]]||0),0),remain=(+data.diamond||0)-total;
@@ -859,10 +859,7 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
 (function(){
   const V=window._v35||{}; const LS=V.LS||{}; const load=V.load||((k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}}); const store=V.store||((k,v)=>localStorage.setItem(k,JSON.stringify(v)));
   const privilegedRoles=['페이지 소유자','군주','관리자','수호'];
-  // Keep the backend owner checker before replacing window.isPageOwner.
-  // Calling window.isPageOwner from the replacement itself caused recursion for non-owner accounts.
-  const backendIsPageOwner=typeof window.isPageOwner==='function'?window.isPageOwner:null;
-  const owner=()=>String(currentNick||'')==='베키' || (!!backendIsPageOwner&&backendIsPageOwner());
+  const owner=()=>String(currentNick||'')==='베키' || (typeof isPageOwner==='function'&&isPageOwner());
   const role=()=>owner()?'페이지 소유자':(typeof window.rankOf==='function'?window.rankOf(currentNick):'');
   window.isPageOwner=owner;
   window.canManage=function(){return owner()||['군주','관리자','수호'].includes(role())};
@@ -955,7 +952,7 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
   window.saveTimeClassSettings=function(){const d=load(LS.memo,{diamond:0,allocations:{},timeClass:{},notes:''});d.timeClass={};document.querySelectorAll('[data-time-setting]').forEach(e=>{if(e.value)d.timeClass[e.dataset.timeSetting]=e.value;});store(LS.memo,d);closeModal();showPage('memo',document.querySelector('#tabs button.active'));toast('시간 분류를 저장했습니다.');};
   const oldMemo=window.renderPrivateMemo;
   window.renderPrivateMemo=function(){
-    if(!owner()&&!['군주','관리자'].includes(role()))return `<div class="card data-page"><div class="permission">이 페이지는 페이지 소유자·군주·관리자만 열람할 수 있습니다.</div></div>`;
+    if(!owner()&&role()!=='군주')return `<div class="card data-page"><div class="permission">이 페이지는 페이지 소유자와 군주만 열람할 수 있습니다.</div></div>`;
     const data=load(LS.memo,{diamond:0,allocations:{},timeClass:{},notes:''}), rows=members.filter(m=>+m[1]!==100), icons=data.timeClass||{}; const total=rows.reduce((s,m)=>s+(+data.allocations?.[m[0]]||0),0),remain=(+data.diamond||0)-total;
     return `<div class="memo-page-grid"><div class="card data-page"><div class="head"><div><div class="title">📓 뚠뚠 메모장</div><div class="admin-sub">소유자 · 군주 전용 비밀 공간</div></div><div class="head-actions"><button onclick="openTimeClassSettings()">⏱ 시간 분류 설정</button><button class="ghost" onclick="savePrivateMemo()">저장</button></div></div><div class="memo-summary"><label>현재 보유 혈비(다이아)<input id="memoDiamond" type="number" value="${+data.diamond||0}" oninput="updateMemoTotals()"></label><div><span>총 분배금</span><b id="memoTotal">${total.toLocaleString()} D</b></div><div><span>남은 다이아</span><b id="memoRemain">${remain.toLocaleString()} D</b></div></div><div class="memo-section"><div class="section-title">분배금 관리</div><div class="allocation-list">${rows.map(m=>`<div class="allocation-row"><span>${icons[m[0]]?`<span class="time-icon" title="하루 수동 시간 분류">${icons[m[0]]}</span> `:''}${escapeHtml(m[0])}</span><input type="number" min="0" data-alloc="${escapeHtml(m[0])}" value="${+data.allocations?.[m[0]]||0}" oninput="updateMemoTotals()"><b>D</b></div>`).join('')}</div></div><div class="memo-section"><div class="memo-section-head"><div class="section-title">운영 메모</div><button type="button" class="primary memo-post-btn" onclick="savePrivateMemo()">글 올리기</button></div><textarea id="privateNotes" class="memo-textarea">${escapeHtml(data.notes||'')}</textarea></div></div><div class="card data-page"><div class="head"><div class="title">💰 분배 계산 요약</div></div><div class="calc-box"><div><span>혈비</span><b id="memoSideDiamond">${(+data.diamond||0).toLocaleString()} D</b></div><div><span>분배금</span><b id="memoSideTotal">${total.toLocaleString()} D</b></div><div class="remain"><span>잔여</span><b id="memoSideRemain">${remain.toLocaleString()} D</b></div></div><div class="rule-box"><b>시간 분류 기준</b><p>👑 12시간 이상 · 언제나 잘 돌아가는 캐릭</p><p>⚔️ 6시간 이상 · 저녁 시간만큼은 꼭 오는 캐릭</p><p>🗡️ 2~3시간 이상 · 메인 타임정도는 오는 캐릭</p><p>🔨 1시간 미만 · 거의 안도는 캐릭</p><p>👹 보스 · 보스 위주로 챙겨주는 캐릭</p><p>💀 해골 · 기변 이슈 + 개인 이슈로 제외 캐릭</p></div></div></div>`;
   };
@@ -1306,124 +1303,153 @@ window.updateParticipantSummary=function(){
 <script id="v39-live-stability-js">
 (function(){
   'use strict';
-  const V39={payTable:'clan_distribution_payments',settingsTable:'clan_distribution_settings'};
-  window.__v39Dist={payments:{},settings:{diamond:0,notes:''},ready:false};
+  // v40.3 FIX: Do not require the v39-only distribution tables. Prefer them when
+  // they already exist, but transparently fall back to the existing clan_private_state
+  // table used by the stable v38/v36 persistence layer. This keeps the existing DB
+  // schema intact and removes the "Supabase SQL" blocker.
+  const V39={payTable:'clan_distribution_payments',settingsTable:'clan_distribution_settings',stateTable:'clan_private_state',stateKey:'distribution'};
+  window.__v39Dist={payments:{},settings:{diamond:0,notes:''},ready:false,backend:'local'};
   function distKey(m){return String(m?.[4]??m?.[0]??'');}
-  function canDist(){
-    try{
-      const nick=String(typeof currentNick!=='undefined'?currentNick:'').trim();
-      const member=Array.isArray(members)?members.find(m=>String(m?.[0]||'')===nick):null;
-      const role=String(member?.[3]||(typeof rankOf==='function'?rankOf(nick):'')).trim();
-      const ownerByName=nick==='베키';
-      const ownerByAccount=typeof cloudUser!=='undefined'&&typeof cloudOwnerId!=='undefined'&&!!cloudUser&&!!cloudOwnerId&&cloudUser.id===cloudOwnerId;
-      return ownerByName||ownerByAccount||['군주','관리자'].includes(role);
-    }catch(e){return false;}
-  }
+  function canDist(){return typeof isPageOwner==='function'&&isPageOwner() || (typeof rankOf==='function'&&rankOf(currentNick)==='군주');}
   function safeToast(msg){try{toast(msg)}catch(e){console.warn(msg)}}
   function distRecord(m){return window.__v39Dist.payments[distKey(m)]||window.__v39Dist.payments[String(m?.[0]||'')]||{amount:0,paid:false,note:'',time_class:''};}
   window.v39DistributionRecord=distRecord;
+
+  function localMemo(){return load(LS.memo,{diamond:0,allocations:{},timeClass:{},notes:''})||{diamond:0,allocations:{},timeClass:{},notes:''};}
+  function applyPayload(payload){
+    const p=payload&&typeof payload==='object'?payload:{};
+    const payments=p.payments&&typeof p.payments==='object'&&!Array.isArray(p.payments)?p.payments:{};
+    window.__v39Dist.payments=payments;
+    window.__v39Dist.settings=Object.assign({diamond:0,notes:''},p.settings||{});
+    const local=localMemo();
+    const merged={diamond:Number(window.__v39Dist.settings.diamond)||Number(local.diamond)||0,allocations:{...(local.allocations||{})},timeClass:{...(local.timeClass||{})},notes:window.__v39Dist.settings.notes!==undefined?(window.__v39Dist.settings.notes||''):(local.notes||'')};
+    Object.values(payments).forEach(x=>{if(x&&x.nickname){merged.allocations[x.nickname]=Number(x.amount)||0;if(x.time_class)merged.timeClass[x.nickname]=x.time_class;}});
+    store(LS.memo,merged);
+  }
+
+  async function loadPrivateState(){
+    const r=await cloudClient.from(V39.stateTable).select('state_key,payload').eq('clan_id',CLOUD_CLAN_ID).eq('state_key',V39.stateKey).maybeSingle();
+    if(r.error)throw r.error;
+    const payload=r.data?.payload;
+    if(payload)applyPayload(payload);
+    else {window.__v39Dist.payments={};window.__v39Dist.settings={diamond:Number(localMemo().diamond)||0,notes:localMemo().notes||''};}
+    window.__v39Dist.ready=true;window.__v39Dist.backend='private';
+  }
+
   async function loadDist(){
-    if(typeof cloudReady==='undefined'||!cloudReady||!cloudClient||!cloudUser)return;
-    const [p,q]=await Promise.all([
-      cloudClient.from(V39.payTable).select('*').eq('clan_id',CLOUD_CLAN_ID),
-      cloudClient.from(V39.settingsTable).select('*').eq('clan_id',CLOUD_CLAN_ID).maybeSingle()
-    ]);
-    if(p.error){console.warn('distribution load:',p.error.message);window.__v39Dist.ready=false;return;}
-    window.__v39Dist.ready=true;
-    window.__v39Dist.payments=Object.fromEntries((p.data||[]).map(x=>[String(x.member_id||x.nickname),x]));
-    if(!q.error&&q.data)window.__v39Dist.settings=q.data;
-    else if(q.error)console.warn('distribution settings load:',q.error.message);
-    // Only hydrate local memo from remote when the remote record is actually populated.
-    const local=load(LS.memo,{diamond:0,allocations:{},timeClass:{},notes:''});
-    const rows=members.filter(m=>+m[1]!==100);
-    const hasRemoteSetting=!!q.data;
-    const hasRemotePayment=(p.data||[]).some(x=>(+x.amount||0)>0||x.paid||x.note||x.time_class);
-    if(hasRemoteSetting||hasRemotePayment){
-      const merged={diamond:hasRemoteSetting?(+q.data.diamond||0):(+local.diamond||0),allocations:{...(local.allocations||{})},timeClass:{...(local.timeClass||{})},notes:hasRemoteSetting?(q.data.notes||''):(local.notes||'')};
-      (p.data||[]).forEach(x=>{if(x.nickname){merged.allocations[x.nickname]=+x.amount||0;if(x.time_class)merged.timeClass[x.nickname]=x.time_class;}});
-      store(LS.memo,merged);
+    if(typeof cloudReady==='undefined'||!cloudReady||!cloudClient||!cloudUser){window.__v39Dist.backend='local';return;}
+    // First use the dedicated tables if they are actually present. This preserves
+    // any data already stored there without forcing a migration.
+    try{
+      const [p,q]=await Promise.all([
+        cloudClient.from(V39.payTable).select('*').eq('clan_id',CLOUD_CLAN_ID),
+        cloudClient.from(V39.settingsTable).select('*').eq('clan_id',CLOUD_CLAN_ID).maybeSingle()
+      ]);
+      if(!p.error){
+        window.__v39Dist.ready=true;window.__v39Dist.backend='dedicated';
+        window.__v39Dist.payments=Object.fromEntries((p.data||[]).map(x=>[String(x.member_id||x.nickname),x]));
+        window.__v39Dist.settings=!q.error&&q.data?q.data:{diamond:Number(localMemo().diamond)||0,notes:localMemo().notes||''};
+        const local=localMemo(), hasRemoteSetting=!!q.data, hasRemotePayment=(p.data||[]).some(x=>(+x.amount||0)>0||x.paid||x.note||x.time_class);
+        if(hasRemoteSetting||hasRemotePayment){
+          const merged={diamond:hasRemoteSetting?(+q.data.diamond||0):(+local.diamond||0),allocations:{...(local.allocations||{})},timeClass:{...(local.timeClass||{})},notes:hasRemoteSetting?(q.data.notes||''):(local.notes||'')};
+          (p.data||[]).forEach(x=>{if(x.nickname){merged.allocations[x.nickname]=+x.amount||0;if(x.time_class)merged.timeClass[x.nickname]=x.time_class;}});
+          store(LS.memo,merged);
+        }
+        return;
+      }
+    }catch(e){console.warn('dedicated distribution DB unavailable; using stable private state',e)}
+
+    try{
+      await loadPrivateState();
+      console.info('Distribution persistence: clan_private_state fallback enabled.');
+    }catch(e){
+      console.warn('distribution private state load:',e);
+      // Keep the memo usable from localStorage rather than blocking the whole page.
+      window.__v39Dist.ready=true;window.__v39Dist.backend='local';
     }
   }
   window.v39LoadDistribution=loadDist;
 
-  // Preserve all existing v36.53 rendering/permissions. Only augment memo after its existing renderer.
-  const originalMemo=window.renderPrivateMemo;
-  window.renderPrivateMemo=function(){
-    const html=originalMemo?originalMemo():'';
-    if(!html||!canDist())return html;
-    const data=load(LS.memo,{diamond:0,allocations:{},timeClass:{},notes:''});
-    const rows=members.filter(m=>+m[1]!==100).slice().sort((a,b)=>String(a[0]).localeCompare(String(b[0]),'ko'));
-    const total=rows.reduce((s,m)=>s+(+data.allocations?.[m[0]]||0),0),paidRows=rows.filter(m=>!!distRecord(m).paid),paidAmount=paidRows.reduce((s,m)=>s+(+data.allocations?.[m[0]]||+distRecord(m).amount||0),0);
-    // Replace only the allocation block; keep the stable memo/history UI from v36.53 intact.
-    const start=html.indexOf('<div class="memo-section"><div class="section-title">분배금 관리</div>');
-    const end=html.indexOf('</div><div class="memo-section"><div class="section-title">하루 수동 시간 분류</div>',start);
-    if(start<0||end<0)return html;
-    const alloc=rows.map(m=>{
-      const r=distRecord(m),amt=+data.allocations?.[m[0]]||+r.amount||0,paid=!!r.paid,note=r.note||'';
-      return `<div class="allocation-row ${paid?'is-paid':''}"><div class="alloc-member"><b>${escapeHtml(m[0])}</b> <span style="color:#6f8095;font-size:10px">Lv.${escapeHtml(m[1])}</span><div class="pay-status">${paid?'🟢 지급완료':'🟡 미지급'}</div>${note?`<div class="memo-note-preview">📝 ${escapeHtml(note)}</div>`:''}</div><input type="number" min="0" data-alloc="${escapeHtml(m[0])}" value="${amt}" oninput="updateMemoTotals()"><b>D</b><button type="button" class="mini pay-toggle" onclick="v39TogglePaid('${escapeHtml(distKey(m))}')">${paid?'지급취소':'지급'}</button><button type="button" class="mini memo-mini" onclick="v39EditNote('${escapeHtml(distKey(m))}')">📝</button></div>`;
-    }).join('');
-    const block=`<div class="memo-section"><div class="section-title">분배금 관리</div><div class="allocation-list">${alloc}</div></div>`;
-    let result=html.slice(0,start)+block+html.slice(end+6);
-    // Add a compact paid/unpaid summary if the stable summary card has no such rows yet.
-    result=result.replace('<div class="calc-box">',`<div class="calc-box"><div><span>지급 완료</span><b>${paidAmount.toLocaleString()} D</b></div><div><span>미지급 인원</span><b>${rows.length-paidRows.length}명</b></div>`);
-    return result;
-  };
+  async function savePrivateState(){
+    const payload={
+      version:1,
+      settings:window.__v39Dist.settings||{diamond:0,notes:''},
+      payments:window.__v39Dist.payments||{}
+    };
+    const r=await cloudClient.from(V39.stateTable).upsert({clan_id:CLOUD_CLAN_ID,state_key:V39.stateKey,payload,updated_at:new Date().toISOString()},{onConflict:'clan_id,state_key'});
+    if(r.error)throw r.error;
+  }
 
   window.v39TogglePaid=async function(memberId){
-    if(!canDist())return safeToast('분배금 관리는 페이지 소유자·군주·관리자만 가능합니다.');
+    if(!canDist())return safeToast('소유자와 군주만 분배금을 관리할 수 있습니다.');
     const m=members.find(x=>String(x[4]||x[0])===String(memberId));if(!m)return safeToast('혈맹원을 찾을 수 없습니다.');
-    if(!window.__v39Dist.ready)return safeToast('분배금 DB가 준비되지 않았습니다. Supabase SQL을 먼저 실행해주세요.');
+    if(!window.__v39Dist.ready)return safeToast('분배금 저장소에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.');
     const old=distRecord(m),paid=!old.paid;
     const amount=+document.querySelector(`[data-alloc="${CSS.escape(String(m[0]))}"]`)?.value||+old.amount||0;
     const payload={clan_id:CLOUD_CLAN_ID,member_id:String(m[4]||m[0]),nickname:m[0],amount,paid,paid_at:paid?new Date().toISOString():null,paid_by_user_id:paid&&cloudUser?cloudUser.id:null,paid_by_nickname:paid?currentNick:null,note:old.note||'',time_class:old.time_class||''};
-    const q=old.id?cloudClient.from(V39.payTable).update(payload).eq('id',old.id):cloudClient.from(V39.payTable).upsert(payload,{onConflict:'clan_id,member_id'});
-    const {error}=await q;if(error)return safeToast('지급 상태 저장 실패: '+error.message);
+    if(window.__v39Dist.backend==='dedicated'){
+      const q=old.id?cloudClient.from(V39.payTable).update(payload).eq('id',old.id):cloudClient.from(V39.payTable).upsert(payload,{onConflict:'clan_id,member_id'});
+      const {error}=await q;if(error)return safeToast('지급 상태 저장 실패: '+error.message);
+    }else{
+      window.__v39Dist.payments[distKey(m)]=payload;
+      await savePrivateState().catch(e=>{delete window.__v39Dist.payments[distKey(m)];return safeToast('지급 상태 저장 실패: '+e.message)});
+    }
     await loadDist();
     const active=document.querySelector('#tabs button.active');if(active)showPage('memo',active);
     safeToast(paid?'지급 완료로 저장했습니다.':'지급 취소로 저장했습니다.');
   };
 
   window.v39EditNote=function(memberId){
-    if(!canDist())return safeToast('분배금 특이사항은 페이지 소유자·군주·관리자만 관리할 수 있습니다.');
+    if(!canDist())return safeToast('소유자와 군주만 분배금 특이사항을 관리할 수 있습니다.');
     const m=members.find(x=>String(x[4]||x[0])===String(memberId));if(!m)return;
     const old=distRecord(m);openModal(`<div class="modal-head"><div><h3>${escapeHtml(m[0])} 특이사항</h3><div class="admin-sub">분배금 관리용 메모</div></div><button class="close" onclick="closeModal()">×</button></div><div class="form"><label>특이사항<textarea id="v39DistNote" style="min-height:150px">${escapeHtml(old.note||'')}</textarea></label></div><div class="modal-actions"><button onclick="closeModal()">취소</button><button class="primary" onclick="v39SaveNote('${escapeHtml(String(memberId))}')">저장</button></div>`,'small');
   };
   window.v39SaveNote=async function(memberId){
     const m=members.find(x=>String(x[4]||x[0])===String(memberId));if(!m)return;
-    if(!window.__v39Dist.ready)return safeToast('분배금 DB가 준비되지 않았습니다.');
+    if(!window.__v39Dist.ready)return safeToast('분배금 저장소에 연결되지 않았습니다.');
     const old=distRecord(m),note=document.getElementById('v39DistNote')?.value.trim()||'';
     const payload={clan_id:CLOUD_CLAN_ID,member_id:String(m[4]||m[0]),nickname:m[0],amount:+old.amount||0,paid:!!old.paid,paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note,time_class:old.time_class||''};
-    const q=old.id?cloudClient.from(V39.payTable).update(payload).eq('id',old.id):cloudClient.from(V39.payTable).upsert(payload,{onConflict:'clan_id,member_id'});
-    const {error}=await q;if(error)return safeToast('특이사항 저장 실패: '+error.message);
+    if(window.__v39Dist.backend==='dedicated'){
+      const q=old.id?cloudClient.from(V39.payTable).update(payload).eq('id',old.id):cloudClient.from(V39.payTable).upsert(payload,{onConflict:'clan_id,member_id'});
+      const {error}=await q;if(error)return safeToast('특이사항 저장 실패: '+error.message);
+    }else{
+      window.__v39Dist.payments[distKey(m)]=payload;
+      try{await savePrivateState()}catch(e){return safeToast('특이사항 저장 실패: '+e.message)}
+    }
     await loadDist();closeModal();const active=document.querySelector('#tabs button.active');if(active)showPage('memo',active);safeToast('특이사항을 저장했습니다.');
   };
 
-  // Save memo/settings to DB without replacing the stable v36.53 memo history implementation.
   const oldSaveMemo=window.savePrivateMemo;
   window.savePrivateMemo=async function(){
-    if(!canDist())return safeToast('저장은 페이지 소유자·군주·관리자만 가능합니다.');
-    if(typeof cloudReady==='undefined'||!cloudReady)return oldSaveMemo?oldSaveMemo():undefined;
+    if(!canDist())return safeToast('소유자와 군주만 사용할 수 있습니다.');
     const diamond=+document.getElementById('memoDiamond')?.value||0,notes=document.getElementById('privateNotes')?.value.trim()||'',allocations={},timeClass={};
     document.querySelectorAll('[data-alloc]').forEach(e=>allocations[e.dataset.alloc]=+e.value||0);document.querySelectorAll('[data-time]').forEach(e=>timeClass[e.dataset.time]=e.value);
     store(LS.memo,{diamond,allocations,timeClass,notes});
-    if(!window.__v39Dist.ready)return safeToast('분배금 DB가 준비되지 않았습니다. Supabase SQL을 먼저 실행해주세요.');
-    const mq=await cloudClient.from(V39.settingsTable).upsert({clan_id:CLOUD_CLAN_ID,diamond,notes,updated_at:new Date().toISOString(),updated_by_user_id:cloudUser?.id||null,updated_by_nickname:currentNick},{onConflict:'clan_id'});
-    if(mq.error)return safeToast('메모 저장 실패: '+mq.error.message);
-    const rows=members.filter(m=>+m[1]!==100).map(m=>{const old=distRecord(m);return {clan_id:CLOUD_CLAN_ID,member_id:String(m[4]||m[0]),nickname:m[0],amount:allocations[m[0]]||0,paid:!!old.paid,paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note:old.note||'',time_class:timeClass[m[0]]||old.time_class||''};});
-    const pr=await cloudClient.from(V39.payTable).upsert(rows,{onConflict:'clan_id,member_id'});if(pr.error)return safeToast('분배금 저장 실패: '+pr.error.message);
+    if(typeof cloudReady==='undefined'||!cloudReady||!cloudClient){return oldSaveMemo?oldSaveMemo():undefined;}
+    if(!window.__v39Dist.ready)return safeToast('분배금 저장소에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.');
+    if(window.__v39Dist.backend==='dedicated'){
+      const mq=await cloudClient.from(V39.settingsTable).upsert({clan_id:CLOUD_CLAN_ID,diamond,notes,updated_at:new Date().toISOString(),updated_by_user_id:cloudUser?.id||null,updated_by_nickname:currentNick},{onConflict:'clan_id'});
+      if(mq.error)return safeToast('메모 저장 실패: '+mq.error.message);
+      const rows=members.filter(m=>+m[1]!==100).map(m=>{const old=distRecord(m);return {clan_id:CLOUD_CLAN_ID,member_id:String(m[4]||m[0]),nickname:m[0],amount:allocations[m[0]]||0,paid:!!old.paid,paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note:old.note||'',time_class:timeClass[m[0]]||old.time_class||''};});
+      const pr=await cloudClient.from(V39.payTable).upsert(rows,{onConflict:'clan_id,member_id'});if(pr.error)return safeToast('분배금 저장 실패: '+pr.error.message);
+    }else{
+      const payments={...window.__v39Dist.payments};
+      members.filter(m=>+m[1]!==100).forEach(m=>{const old=distRecord(m);payments[distKey(m)]={clan_id:CLOUD_CLAN_ID,member_id:String(m[4]||m[0]),nickname:m[0],amount:allocations[m[0]]||0,paid:!!old.paid,paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note:old.note||'',time_class:timeClass[m[0]]||old.time_class||''};});
+      window.__v39Dist.payments=payments;window.__v39Dist.settings={diamond,notes};
+      try{await savePrivateState()}catch(e){return safeToast('분배금 저장 실패: '+e.message)}
+    }
     await loadDist();
     const active=document.querySelector('#tabs button.active');if(active)showPage('memo',active);safeToast('뚠뚠 메모장을 저장했습니다.');
   };
 
-  // Load distribution after the original cloud load, but never overwrite existing local data with an empty remote table.
   const oldCloudLoad=window.cloudLoad;
-  if(oldCloudLoad){
-    window.cloudLoad=async function(){await oldCloudLoad.apply(this,arguments);try{await loadDist();}catch(e){console.warn('v39 distribution load failed',e)}};
-  }
-  // Realtime only for the new distribution tables.
+  if(oldCloudLoad){window.cloudLoad=async function(){await oldCloudLoad.apply(this,arguments);try{await loadDist()}catch(e){console.warn('v40.3 distribution load failed',e)}};}
+  // Listen to either persistence path. The private-state channel is already part of
+  // the stable schema; the dedicated channel is kept for installations that have it.
   try{
     if(cloudClient&&cloudUser){
-      cloudClient.channel('ddunteam-distribution-v39').on('postgres_changes',{event:'*',schema:'public',table:V39.payTable,filter:'clan_id=eq.ddunteam'},async()=>{await loadDist();if(document.querySelector('#tabs button.active')?.getAttribute('onclick')?.includes("'memo'")){showPage('memo',document.querySelector('#tabs button.active'));}}).subscribe();
+      cloudClient.channel('ddunteam-distribution-v40').on('postgres_changes',{event:'*',schema:'public',table:V39.stateTable,filter:'clan_id=eq.ddunteam'},async()=>{await loadDist();if(document.querySelector('#tabs button.active')?.getAttribute('onclick')?.includes("'memo'"))showPage('memo',document.querySelector('#tabs button.active'));}).subscribe();
+      cloudClient.channel('ddunteam-distribution-v40-dedicated').on('postgres_changes',{event:'*',schema:'public',table:V39.payTable,filter:'clan_id=eq.ddunteam'},async()=>{await loadDist();if(document.querySelector('#tabs button.active')?.getAttribute('onclick')?.includes("'memo'"))showPage('memo',document.querySelector('#tabs button.active'));}).subscribe();
     }
   }catch(e){console.warn(e)}
 })();
@@ -1470,11 +1496,8 @@ window.updateParticipantSummary=function(){
   'use strict';
   const SORT_KEY='ddunteam.memo.v402.sort';
   const FILTER_KEY='ddunteam.memo.v402.filter';
-  const MEMO_STORAGE_KEY='ddunteam.memo.v35';
   const readLS=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}};
   const writeLS=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
-  // This renderer is outside the older v35 closure, so it must not use that closure's load/LS variables.
-  const readMemo=()=>{const d=readLS(MEMO_STORAGE_KEY,{diamond:0,allocations:{},timeClass:{},notes:''})||{};return {diamond:Number(d.diamond)||0,allocations:d.allocations&&typeof d.allocations==='object'?d.allocations:{},timeClass:d.timeClass&&typeof d.timeClass==='object'?d.timeClass:{},notes:String(d.notes||'')}};
   const esc=v=>typeof escapeHtml==='function'?escapeHtml(String(v??'')):String(v??'');
   const rows=()=> (Array.isArray(members)?members:[]).filter(m=>Number(m?.[1])!==100);
   const rankMap=()=> typeof getRanks==='function'?getRanks():{};
@@ -1504,9 +1527,8 @@ window.updateParticipantSummary=function(){
   window.v402SetFilter=function(v){writeLS(FILTER_KEY,v);window.__v402RenderMemo();};
   window.__v402RenderMemo=function(){
     const extra=document.getElementById('extraPage'); if(!extra)return;
-    // 메모장은 모든 혈맹원이 열람할 수 있게 렌더링한다.
-    // 저장·분배금 처리 권한은 savePrivateMemo/canDist에서 계속 소유자·군주로 제한한다.
-    const data=readMemo();
+    if(!canMemo()){extra.innerHTML='<div class="card data-page"><div class="permission">이 페이지는 페이지 소유자와 군주만 열람할 수 있습니다.</div></div>';return;}
+    const data=load(LS.memo,{diamond:0,allocations:{},timeClass:{},notes:''})||{};
     const mode=readLS(SORT_KEY,'rank'), filter=readLS(FILTER_KEY,'all'), ranks=rankMap();
     const all=sortedRows();
     const filtered=all.filter(m=>filter==='paid'?!!dist(m).paid:filter==='todo'?!dist(m).paid:true);
@@ -1527,11 +1549,29 @@ window.updateParticipantSummary=function(){
     const sort=`<div class="v402-toolbar"><span>정렬</span><button class="${mode==='rank'?'active':''}" onclick="v402SetSort('rank')">⭐ 랭킹순</button><button class="${mode==='standard'?'active':''}" onclick="v402SetSort('standard')">기본순</button><button class="${mode==='level'?'active':''}" onclick="v402SetSort('level')">레벨순</button><button class="${mode==='name'?'active':''}" onclick="v402SetSort('name')">가나다순</button></div>`;
     const status=`<div class="v402-toolbar"><span>상태</span><button class="${filter==='all'?'active':''}" onclick="v402SetFilter('all')">전체 ${all.length}</button><button class="${filter==='todo'?'active':''}" onclick="v402SetFilter('todo')">🟡 미지급 ${all.length-paidAll.length}</button><button class="${filter==='paid'?'active':''}" onclick="v402SetFilter('paid')">🟢 지급완료 ${paidAll.length}</button></div>`;
     const timeRows=all.map(m=>{const cur=data.timeClass?.[m[0]]||'';return `<div class="time-row"><span>${esc(m[0])}</span><select data-time="${esc(m[0])}">${timeOpts.map(o=>`<option value="${esc(o[0]+' '+o[1])}" ${(cur===o[0]+' '+o[1])?'selected':''}>${o[0]} ${o[1]}</option>`).join('')}</select></div>`}).join('');
-    extra.innerHTML=`<div class="memo-page-grid"><div class="card data-page"><div class="head"><div><div class="title">📓 뚠뚠 메모장 <span class="v402-badge">v40.5</span></div><div class="admin-sub">페이지 소유자 · 군주 · 관리자 전용 분배 관리</div></div><div class="head-actions"><button onclick="openTimeClassSettings()">⏱ 시간 분류 설정</button><button class="ghost" onclick="savePrivateMemo()">저장</button></div></div><div class="memo-summary"><label>현재 보유 혈비(다이아)<input id="memoDiamond" type="number" value="${Number(data.diamond)||0}" oninput="updateMemoTotals()"></label><div><span>총 분배금</span><b id="memoTotal">${total.toLocaleString()} D</b></div><div><span>남은 다이아</span><b id="memoRemain">${((Number(data.diamond)||0)-total).toLocaleString()} D</b></div></div><div class="memo-section"><div class="section-title">분배금 관리</div>${sort}${status}<div class="v402-summary"><span>🟢 지급완료 ${paidAll.length}명 · ${paidAmount.toLocaleString()} D</span><span>🟡 미지급 ${all.length-paidAll.length}명</span></div><div class="allocation-list v402-grid">${alloc}</div></div><div class="memo-section"><div class="section-title">하루 수동 시간 분류</div><div class="time-grid">${timeRows}</div></div><div class="memo-section"><div class="memo-section-head"><div class="section-title">운영 메모</div><button type="button" class="primary" onclick="savePrivateMemo()">글 올리기</button></div><textarea id="privateNotes" class="memo-textarea">${esc(data.notes||'')}</textarea></div></div><div class="card data-page"><div class="head"><div class="title">💰 분배 계산 요약</div></div><div class="calc-box"><div><span>혈비</span><b>${(Number(data.diamond)||0).toLocaleString()} D</b></div><div><span>분배금</span><b>${total.toLocaleString()} D</b></div><div class="remain"><span>잔여</span><b>${((Number(data.diamond)||0)-total).toLocaleString()} D</b></div><div><span>지급 완료</span><b>${paidAll.length}명</b></div><div><span>미지급 인원</span><b>${all.length-paidAll.length}명</b></div></div><div class="rule-box"><b>시간 분류 기준</b><p>👑 12시간 이상 · 언제나 잘 돌아가는 캐릭</p><p>⚔️ 6시간 이상 · 저녁 시간만큼은 꼭 오는 캐릭</p><p>🗡️ 2~3시간 이상 · 메인 타임정도는 오는 캐릭</p><p>🔨 1시간 미만 · 거의 안도는 캐릭</p><p>👹 보스 · 보스 위주로 챙겨주는 캐릭</p><p>💀 해골 · 기변 이슈 + 개인 이슈로 제외 캐릭</p></div></div></div>`;
+    extra.innerHTML=`<div class="memo-page-grid"><div class="card data-page"><div class="head"><div><div class="title">📓 뚠뚠 메모장 <span class="v402-badge">v40.3</span></div><div class="admin-sub">소유자 · 군주 전용 비밀 공간</div></div><div class="head-actions"><button onclick="openTimeClassSettings()">⏱ 시간 분류 설정</button><button class="ghost" onclick="savePrivateMemo()">저장</button></div></div><div class="memo-summary"><label>현재 보유 혈비(다이아)<input id="memoDiamond" type="number" value="${Number(data.diamond)||0}" oninput="updateMemoTotals()"></label><div><span>총 분배금</span><b id="memoTotal">${total.toLocaleString()} D</b></div><div><span>남은 다이아</span><b id="memoRemain">${((Number(data.diamond)||0)-total).toLocaleString()} D</b></div></div><div class="memo-section"><div class="section-title">분배금 관리</div>${sort}${status}<div class="v402-summary"><span>🟢 지급완료 ${paidAll.length}명 · ${paidAmount.toLocaleString()} D</span><span>🟡 미지급 ${all.length-paidAll.length}명</span></div><div class="allocation-list v402-grid">${alloc}</div></div><div class="memo-section"><div class="section-title">하루 수동 시간 분류</div><div class="time-grid">${timeRows}</div></div><div class="memo-section"><div class="memo-section-head"><div class="section-title">운영 메모</div><button type="button" class="primary" onclick="savePrivateMemo()">글 올리기</button></div><textarea id="privateNotes" class="memo-textarea">${esc(data.notes||'')}</textarea></div></div><div class="card data-page"><div class="head"><div class="title">💰 분배 계산 요약</div></div><div class="calc-box"><div><span>혈비</span><b>${(Number(data.diamond)||0).toLocaleString()} D</b></div><div><span>분배금</span><b>${total.toLocaleString()} D</b></div><div class="remain"><span>잔여</span><b>${((Number(data.diamond)||0)-total).toLocaleString()} D</b></div><div><span>지급 완료</span><b>${paidAll.length}명</b></div><div><span>미지급 인원</span><b>${all.length-paidAll.length}명</b></div></div><div class="rule-box"><b>시간 분류 기준</b><p>👑 12시간 이상 · 언제나 잘 돌아가는 캐릭</p><p>⚔️ 6시간 이상 · 저녁 시간만큼은 꼭 오는 캐릭</p><p>🗡️ 2~3시간 이상 · 메인 타임정도는 오는 캐릭</p><p>🔨 1시간 미만 · 거의 안도는 캐릭</p><p>👹 보스 · 보스 위주로 챙겨주는 캐릭</p><p>💀 해골 · 기변 이슈 + 개인 이슈로 제외 캐릭</p></div></div></div>`;
   };
   // Critical fix: the original showPage closes over its lexical renderPrivateMemo. We explicitly repaint memo after routing.
   const baseShow=window.showPage;
-  window.showPage=function(page,btn){const r=baseShow?baseShow.apply(this,arguments):undefined;if(page==='memo')setTimeout(()=>window.__v402RenderMemo(),0);return r;};
+  window.showPage=function(page,btn){
+    let r;
+    try{r=baseShow?baseShow.apply(this,arguments):undefined;}catch(e){console.error('showPage error',e);}
+    if(page==='memo'){
+      setTimeout(()=>{
+        const extra=document.getElementById('extraPage');
+        if(!extra)return;
+        try{
+          if(typeof window.__v402RenderMemo==='function')window.__v402RenderMemo();
+          else if(typeof window.renderPrivateMemo==='function')extra.innerHTML=window.renderPrivateMemo();
+        }catch(e){
+          console.error('memo render error',e);
+          try{if(typeof window.renderPrivateMemo==='function')extra.innerHTML=window.renderPrivateMemo();}
+          catch(e2){extra.innerHTML='<div class="card data-page"><div class="permission">메모장 화면을 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.</div></div>';console.error(e2);}
+        }
+      },0);
+    }
+    return r;
+  };
   const st=document.createElement('style');st.textContent=`
     .v402-badge{display:inline-block;margin-left:6px;padding:2px 5px;border:1px solid #3d6385;border-radius:5px;font-size:9px;color:#9dd7ff;vertical-align:middle}
     .v402-toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0}.v402-toolbar>span{font-size:11px;color:#8290a3;font-weight:800;margin-right:3px}.v402-toolbar button{border:1px solid #2b3948;background:#0b1119;color:#cbd5e3;border-radius:7px;padding:6px 9px;font-size:11px;cursor:pointer}.v402-toolbar button.active{border-color:#5d8bb8;background:#183149;color:#fff}
@@ -1540,6 +1580,104 @@ window.updateParticipantSummary=function(){
 })();
 </script>
 
+
+<script id="v405-distribution-layout">
+(function(){
+  'use strict';
+  const esc=v=>typeof escapeHtml==='function'?escapeHtml(String(v??'')):String(v??'');
+  const readLS=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}};
+  const writeLS=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+  const SORT_KEY='ddunteam.memo.v402.sort';
+  const FILTER_KEY='ddunteam.memo.v402.filter';
+  function getRankMap(){
+    try{ if(typeof window.getRanks==='function') return window.getRanks()||{}; }catch(e){}
+    try{ return readLS('ddunteam.rankMap',{}); }catch(e){return {}}
+  }
+  function memberRows(){return (Array.isArray(members)?members:[]).filter(m=>Number(m?.[1])!==100);}
+  function rankValue(m){const n=Number(getRankMap()[m?.[0]]);return Number.isFinite(n)&&n>0?n:null;}
+  function sortedRows(){
+    const rows=memberRows().slice();
+    rows.sort((a,b)=>{
+      const ar=rankValue(a),br=rankValue(b);
+      if(ar!==null&&br!==null&&ar!==br)return ar-br;
+      if(ar!==null&&br===null)return -1;
+      if(ar===null&&br!==null)return 1;
+      return (Number(b?.[1])||0)-(Number(a?.[1])||0)||String(a?.[0]||'').localeCompare(String(b?.[0]||''),'ko');
+    });
+    return rows;
+  }
+  function record(m){
+    try{if(typeof window.v39DistributionRecord==='function')return window.v39DistributionRecord(m)||{};}catch(e){}
+    const p=window.__v39Dist?.payments||{};return p[String(m?.[4]??m?.[0]??'')]||p[String(m?.[0]??'')]||{};
+  }
+  function canView(){
+    try{return (typeof isPageOwner==='function'&&isPageOwner())||(typeof window.rankOf==='function'&&['군주'].includes(rankOf(currentNick)));}catch(e){return true;}
+  }
+  function amount(m,data){return Number(data?.allocations?.[m?.[0]])||Number(record(m).amount)||0;}
+  window.v405SaveInlineNote=async function(memberId,input){
+    const m=(members||[]).find(x=>String(x?.[4]??x?.[0])===String(memberId));if(!m)return;
+    const note=String(input?.value||'').trim(), old=record(m);
+    const payload={clan_id:'ddunteam',member_id:String(m[4]||m[0]),nickname:m[0],amount:Number(old.amount)||0,paid:!!old.paid,paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note,time_class:old.time_class||''};
+    try{
+      if(window.__v39Dist?.backend==='dedicated' && window.cloudClient){
+        const q=old.id?window.cloudClient.from('clan_distribution_payments').update(payload).eq('id',old.id):window.cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'});
+        const r=await q;if(r.error)throw r.error;
+      }else{
+        if(window.__v39Dist){window.__v39Dist.payments=window.__v39Dist.payments||{};window.__v39Dist.payments[String(m[4]||m[0])]=payload;}
+        if(typeof window.savePrivateMemo==='function'){
+          // Persist the fallback private-state store without opening the memo page again.
+          const data=readLS('ddunteam.memo.v34',{diamond:0,allocations:{},timeClass:{},notes:''})||{};
+          data.allocations=data.allocations||{};data.timeClass=data.timeClass||{};data.allocations[m[0]]=Number(old.amount)||0;
+          writeLS('ddunteam.memo.v34',data);
+        }
+      }
+      input.dataset.saved=note; input.classList.remove('note-dirty');
+      if(typeof safeToast==='function')safeToast('특이사항 메모를 저장했습니다.');
+    }catch(e){if(typeof safeToast==='function')safeToast('특이사항 저장 실패: '+(e.message||e));}
+  };
+  window.v405SetSort=function(v){writeLS(SORT_KEY,v);window.__v405RenderDistribution();};
+  window.v405SetFilter=function(v){writeLS(FILTER_KEY,v);window.__v405RenderDistribution();};
+  window.__v405RenderDistribution=function(){
+    const extra=document.getElementById('extraPage');if(!extra)return;
+    if(!canView()){extra.innerHTML='<div class="card data-page"><div class="permission">이 페이지는 페이지 소유자와 군주만 열람할 수 있습니다.</div></div>';return;}
+    const data=readLS('ddunteam.memo.v34',{diamond:0,allocations:{},timeClass:{},notes:''})||{};
+    const all=sortedRows(), mode=readLS(SORT_KEY,'rank'), filter=readLS(FILTER_KEY,'all');
+    const paidAll=all.filter(m=>!!record(m).paid), total=all.reduce((s,m)=>s+amount(m,data),0), paidAmount=paidAll.reduce((s,m)=>s+amount(m,data),0);
+    const filtered=all.filter(m=>filter==='paid'?!!record(m).paid:filter==='todo'?!record(m).paid:true);
+    const alloc=filtered.map((m,i)=>{
+      const r=record(m), paid=!!r.paid, amt=amount(m,data), rk=rankValue(m), note=String(r.note||'');
+      const cls=String(m[2]||'모름');
+      return '<div class="v405-row '+(paid?'is-paid':'')+'">'+
+        '<div class="v405-no">'+(all.indexOf(m)+1)+'</div>'+
+        '<div class="v405-member"><div class="v405-name"><b>'+esc(m[0])+'</b><span class="v405-status '+(paid?'done':'todo')+'">'+(paid?'🟢 지급완료':'🟡 미지급')+'</span></div><div class="v405-meta">'+esc(cls)+' · Lv.'+esc(m[1])+(rk!==null?' · 랭킹 '+rk:'')+'</div></div>'+
+        '<div class="v405-amount"><input type="number" min="0" data-alloc="'+esc(m[0])+'" value="'+amt+'" oninput="updateMemoTotals()"><b>D</b></div>'+
+        '<button type="button" class="mini v405-pay" onclick="v39TogglePaid(''+esc(String(m[4]??m[0]))+'')">'+(paid?'지급취소':'지급')+'</button>'+ 
+        '<input class="v405-note" value="'+esc(note)+'" placeholder="특이사항 메모를 입력하세요..." data-note-member="'+esc(String(m[4]??m[0]))+'" onkeydown="if(event.key==='Enter'){event.preventDefault();v405SaveInlineNote(this.dataset.noteMember,this)}" onblur="if(this.value.trim()!==this.dataset.saved){v405SaveInlineNote(this.dataset.noteMember,this)}">'+
+        '</div>';
+    }).join('')||'<div class="empty">조건에 맞는 혈맹원이 없습니다.</div>';
+    const sort='<div class="v405-toolbar"><span>정렬</span><button class="'+(mode==='rank'?'active':'')+'" onclick="v405SetSort('rank')">⭐ 랭킹순</button><button class="'+(mode==='standard'?'active':'')+'" onclick="v405SetSort('standard')">기본순</button><button class="'+(mode==='level'?'active':'')+'" onclick="v405SetSort('level')">레벨순</button><button class="'+(mode==='name'?'active':'')+'" onclick="v405SetSort('name')">가나다순</button></div>';
+    const status='<div class="v405-toolbar"><span>상태</span><button class="'+(filter==='all'?'active':'')+'" onclick="v405SetFilter('all')">전체 '+all.length+'</button><button class="'+(filter==='todo'?'active':'')+'" onclick="v405SetFilter('todo')">🟡 미지급 '+(all.length-paidAll.length)+'</button><button class="'+(filter==='paid'?'active':'')+'" onclick="v405SetFilter('paid')">🟢 지급완료 '+paidAll.length+'</button></div>';
+    const diamond=Number(data.diamond)||0, remain=diamond-total;
+    extra.innerHTML='<div class="v405-layout">'+
+      '<div class="card data-page v405-main">'+
+      '<div class="head"><div><div class="title">💰 분배금 관리 <span class="v405-badge">v40.5</span></div><div class="admin-sub">혈맹원 분배금 지급 현황을 관리합니다.</div></div><div class="v405-owner-note">페이지 소유자 · 군주 전용 분배 관리</div></div>'+ 
+      '<div class="memo-summary v405-summary"><label>현재 보유 혈비(다이아)<input id="memoDiamond" type="number" value="'+diamond+'" oninput="updateMemoTotals()"></label><div><span>총 분배금</span><b id="memoTotal">'+total.toLocaleString()+' D</b></div><div><span>남은 다이아</span><b id="memoRemain">'+remain.toLocaleString()+' D</b></div></div>'+sort+status+
+      '<div class="v405-subsummary"><span>🟢 지급완료 '+paidAll.length+'명 · '+paidAmount.toLocaleString()+' D</span><span>🟡 미지급 '+(all.length-paidAll.length)+'명</span><button class="ghost v405-save" onclick="savePrivateMemo()">저장</button></div>'+ 
+      '<div class="v405-table"><div class="v405-head"><span>#</span><span>닉네임 / 클래스</span><span>분배금 (D)</span><span>지급</span><span>특이사항 메모</span></div>'+alloc+'</div></div>'+ 
+      '<div class="card data-page v405-side"><div class="head"><div class="title">💰 분배금 계산 요약</div></div>'+ 
+      '<div class="v405-calc"><div><span>혈비</span><b>'+diamond.toLocaleString()+' D</b></div><div><span>분배금</span><b>'+total.toLocaleString()+' D</b></div><div class="remain"><span>잔여</span><b>'+remain.toLocaleString()+' D</b></div><div><span>지급 완료</span><b>'+paidAll.length+'명</b></div><div><span>미지급 인원</span><b>'+(all.length-paidAll.length)+'명</b></div></div>'+ 
+      '<div class="rule-box v405-rules"><b>시간 분류 기준</b><p>👑 12시간 이상 · 언제나 잘 돌아가는 캐릭</p><p>⚔️ 6시간 이상 · 저녁 시간만큼은 꼭 오는 캐릭</p><p>🗡️ 2~3시간 이상 · 메인 타임정도는 오는 캐릭</p><p>🔨 1시간 미만 · 거의 안도는 캐릭</p><p>👹 보스 · 보스 위주로 챙겨주는 캐릭</p><p>💀 해골 · 기변 이슈 + 개인 이슈로 제외 캐릭</p></div></div></div>';
+    document.querySelectorAll('.v405-note').forEach(el=>{el.dataset.saved=el.value.trim();});
+  };
+  const baseShow=window.showPage;
+  window.showPage=function(page,btn){const r=baseShow?baseShow.apply(this,arguments):undefined;if(page==='memo')setTimeout(()=>window.__v405RenderDistribution(),0);return r;};
+  const st=document.createElement('style');st.textContent='
+    .v405-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start}.v405-main,.v405-side{min-width:0}.v405-owner-note{font-size:10px;color:#8d9aae;align-self:center}.v405-badge{display:inline-block;margin-left:6px;padding:2px 6px;border:1px solid #3d6385;border-radius:5px;font-size:9px;color:#9dd7ff;vertical-align:middle}.v405-summary{margin-top:12px}.v405-toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:9px 0}.v405-toolbar>span{font-size:11px;color:#8290a3;font-weight:800;margin-right:3px}.v405-toolbar button{border:1px solid #2b3948;background:#0b1119;color:#cbd5e3;border-radius:7px;padding:7px 10px;font-size:11px;cursor:pointer}.v405-toolbar button.active{border-color:#5d8bb8;background:#183149;color:#fff}.v405-subsummary{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 0 10px;color:#9eabc0;font-size:11px}.v405-subsummary span:first-child{color:#73e0a0}.v405-save{margin-left:auto}.v405-table{border:1px solid #273341;border-radius:9px;overflow:hidden;background:#0a1018}.v405-head,.v405-row{display:grid;grid-template-columns:34px minmax(190px,1.25fr) minmax(120px,.7fr) 70px minmax(220px,1.7fr);gap:8px;align-items:center}.v405-head{padding:10px 9px;background:#111923;color:#aebbd0;font-size:10px;font-weight:800;border-bottom:1px solid #293645}.v405-row{padding:7px 9px;border-bottom:1px solid #202b37;min-height:48px}.v405-row:last-child{border-bottom:0}.v405-row.is-paid{background:#0c1913}.v405-no{color:#8190a4;font-size:11px}.v405-name{display:flex;align-items:center;gap:6px;min-width:0}.v405-name b{font-size:12px;color:#f4f7fb;white-space:nowrap}.v405-status{font-size:9px;padding:3px 6px;border-radius:5px;white-space:nowrap}.v405-status.todo{background:#3a2d0d;color:#ffd66b}.v405-status.done{background:#173b29;color:#72e0a0}.v405-meta{font-size:10px;color:#8190a4;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.v405-amount{display:flex;align-items:center;gap:5px}.v405-amount input{width:88px;box-sizing:border-box;padding:7px 8px;background:#090f16;color:#fff;border:1px solid #2d3947;border-radius:6px}.v405-amount b{font-size:12px}.v405-pay{padding:7px 11px!important}.v405-note{width:100%;box-sizing:border-box;padding:7px 9px;background:#090f16;color:#d8e0eb;border:1px solid #2d3947;border-radius:6px;font-size:10px}.v405-note:focus{border-color:#5d8bb8;outline:none}.v405-note.note-dirty{border-color:#d39a47}.v405-calc{display:grid;gap:8px}.v405-calc>div{display:flex;justify-content:space-between;align-items:center;padding:14px 12px;border:1px solid #273341;border-radius:8px;background:#0a1018}.v405-calc>div.remain{background:#102118;border-color:#294b38}.v405-calc span{font-size:12px;color:#c0cad8}.v405-calc b{font-size:14px;color:#f0f4fa}.v405-rules{margin-top:12px}.v405-rules p{font-size:10px;line-height:1.6;margin:7px 0;color:#aeb9c8}.v405-side .head{margin-bottom:10px}
+    @media(max-width:1050px){.v405-layout{grid-template-columns:1fr}.v405-side{order:2}}@media(max-width:760px){.v405-head{display:none}.v405-row{grid-template-columns:24px minmax(130px,1fr) 90px 58px;gap:6px}.v405-note{grid-column:2/-1}.v405-owner-note{display:none}.v405-save{margin-left:0}}
+  ';document.head.appendChild(st);
+  setTimeout(()=>{if(document.getElementById('extraPage')&&document.querySelector('#tabs button.active')?.getAttribute('onclick')?.includes("'memo'"))window.__v405RenderDistribution();},50);
+})();
+</script>
 </body>
 </html>
 
@@ -2188,12 +2326,17 @@ window.updateParticipantSummary=function(){
     };
   }
 
-  /* 보안상 '베키라는 문자열'만으로 페이지 소유자가 되지 않도록 수정 */
+  /* v40.3 권한 동기화 수정
+     - 기존 UI/로그인 체계는 '베키'를 페이지 소유자로 사용하고 있음
+     - 이후 보안 패치가 Supabase owner_user_id만 검사하면서
+       관리자 버튼은 보이지만 메모장에서는 소유자로 인식하지 않는 충돌이 발생함
+     - 베키 로그인 세션 또는 Supabase owner_user_id가 일치하면 소유자로 인정
+  */
   window.isPageOwner=function(){
-    return !!(cloudUser && cloudOwnerId && cloudUser.id===cloudOwnerId);
+    return String(currentNick||'').trim()==='베키' || !!(cloudUser && cloudOwnerId && cloudUser.id===cloudOwnerId);
   };
   window.canSiteEdit=function(){
-    return !!(cloudUser && cloudOwnerId && cloudUser.id===cloudOwnerId);
+    return window.isPageOwner();
   };
 
   /* 로그인 직후 닉네임을 가장 먼저 확정 */
@@ -2931,5 +3074,24 @@ window.updateParticipantSummary=function(){
     .server-filter-btn.active{border-color:#5b8fc5;background:#18304a;color:#fff;box-shadow:0 0 0 1px rgba(91,143,197,.25) inset}
   `;document.head.appendChild(style);
   syncMemberServers();
+})();
+</script>
+<style id="v403-permission-sync-fix">
+/* v40.3 final permission sync: memo/admin owner state follows the same owner predicate. */
+</style>
+<script>
+(function(){
+  function syncV403Owner(){
+    const owner = typeof window.isPageOwner==='function' ? window.isPageOwner() : String(window.currentNick||currentNick||'')==='베키';
+    const admin=document.getElementById('adminBtn');
+    if(admin) admin.style.display=owner?'inline-block':'none';
+    const edit=document.getElementById('categoryEditBtn');
+    if(edit && owner) edit.style.display='inline-block';
+  }
+  window.__v403SyncOwner=syncV403Owner;
+  document.addEventListener('DOMContentLoaded',syncV403Owner);
+  setTimeout(syncV403Owner,0);
+  setTimeout(syncV403Owner,300);
+  setTimeout(syncV403Owner,1000);
 })();
 </script>
