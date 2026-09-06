@@ -3184,3 +3184,65 @@ window.updateParticipantSummary=function(){
   syncMemberServers();
 })();
 </script>
+
+<!-- v40.6 permission final fix: keep the site's existing owner definition (nickname OR cloud owner id). -->
+<script id="v406-permission-final-fix">
+(function(){
+  'use strict';
+  function safeNick(){
+    try{
+      if(typeof currentNick!=='undefined' && currentNick && currentNick!=='설정 필요') return String(currentNick).trim();
+    }catch(e){}
+    try{
+      const n=localStorage.getItem('clanNick');
+      if(n) return String(n).trim();
+    }catch(e){}
+    try{
+      const el=document.getElementById('currentNick');
+      if(el&&el.textContent) return el.textContent.trim();
+    }catch(e){}
+    return '';
+  }
+  window.isPageOwner=function(){
+    const nick=safeNick();
+    if(nick==='베키') return true;
+    try{
+      return !!(typeof cloudUser!=='undefined' && cloudUser && typeof cloudOwnerId!=='undefined' && cloudOwnerId && cloudUser.id===cloudOwnerId);
+    }catch(e){return false;}
+  };
+  window.canSiteEdit=function(){return window.isPageOwner();};
+  window.canMemoAccess=function(){
+    const nick=safeNick();
+    if(window.isPageOwner()) return true;
+    try{return typeof rankOf==='function' && ['군주','관리자','수호'].includes(String(rankOf(nick)||''));}catch(e){return false;}
+  };
+  // The final router in older patches checks isPageOwner() before rendering memo.
+  // Re-wrap it once so a valid owner cannot be left on an empty page.
+  const prev=window.showPage;
+  if(typeof prev==='function' && !window.__v406PermissionRouterWrapped){
+    window.__v406PermissionRouterWrapped=true;
+    window.showPage=function(page,btn){
+      if(page==='memo'){
+        try{
+          const extra=document.getElementById('extraPage');
+          if(extra && window.canMemoAccess() && typeof window.__v402RenderMemo==='function'){
+            const r=prev.apply(this,arguments);
+            setTimeout(function(){try{window.__v402RenderMemo();}catch(e){console.error('memo render',e);}},0);
+            return r;
+          }
+        }catch(e){console.error('memo route',e);}
+      }
+      return prev.apply(this,arguments);
+    };
+  }
+  // If the memo tab is already active when this patch loads, repaint it.
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',function(){
+      try{
+        const b=document.querySelector('#tabs button.active');
+        if(b && /메모장/.test(b.textContent||'') && window.canMemoAccess() && typeof window.__v402RenderMemo==='function') window.__v402RenderMemo();
+      }catch(e){}
+    },{once:true});
+  }
+})();
+</script>
