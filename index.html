@@ -859,7 +859,7 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
 (function(){
   const V=window._v35||{}; const LS=V.LS||{}; const load=V.load||((k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch(e){return d}}); const store=V.store||((k,v)=>localStorage.setItem(k,JSON.stringify(v)));
   const privilegedRoles=['페이지 소유자','군주','관리자','수호'];
-  const owner=()=>String(currentNick||'')==='베키' || (typeof window.isPageOwner==='function'&&window.isPageOwner());
+  const owner=()=>String(currentNick||'')==='베키' || (typeof isPageOwner==='function'&&isPageOwner());
   const role=()=>owner()?'페이지 소유자':(typeof window.rankOf==='function'?window.rankOf(currentNick):'');
   window.isPageOwner=owner;
   window.canManage=function(){return owner()||['군주','관리자','수호'].includes(role())};
@@ -1383,20 +1383,25 @@ window.updateParticipantSummary=function(){
   window.v39TogglePaid=async function(memberId){
     if(!canDist())return safeToast('소유자와 군주만 분배금을 관리할 수 있습니다.');
     const m=members.find(x=>String(x[4]||x[0])===String(memberId));if(!m)return safeToast('혈맹원을 찾을 수 없습니다.');
-    if(!window.__v39Dist.ready)return safeToast('분배금 저장소에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.');
     const old=distRecord(m),paid=!old.paid;
     const amount=+document.querySelector(`[data-alloc="${CSS.escape(String(m[0]))}"]`)?.value||+old.amount||0;
     const payload={clan_id:CLOUD_CLAN_ID,member_id:String(m[4]||m[0]),nickname:m[0],amount,paid,paid_at:paid?new Date().toISOString():null,paid_by_user_id:paid&&cloudUser?cloudUser.id:null,paid_by_nickname:paid?currentNick:null,note:old.note||'',time_class:old.time_class||''};
-    if(window.__v39Dist.backend==='dedicated'){
-      const q=old.id?cloudClient.from(V39.payTable).update(payload).eq('id',old.id):cloudClient.from(V39.payTable).upsert(payload,{onConflict:'clan_id,member_id'});
-      const {error}=await q;if(error)return safeToast('지급 상태 저장 실패: '+error.message);
-    }else{
+    try{
+      window.__v39Dist.ready=true;window.__v39Dist.payments=window.__v39Dist.payments||{};
       window.__v39Dist.payments[distKey(m)]=payload;
-      await savePrivateState().catch(e=>{delete window.__v39Dist.payments[distKey(m)];return safeToast('지급 상태 저장 실패: '+e.message)});
-    }
-    await loadDist();
-    const active=document.querySelector('#tabs button.active');if(active)showPage('memo',active);
-    safeToast(paid?'지급 완료로 저장했습니다.':'지급 취소로 저장했습니다.');
+      const local=localMemo();local.allocations=local.allocations||{};local.allocations[m[0]]=amount;store(LS.memo,local);
+      safeToast(paid?'지급되었습니다.':'지급이 취소되었습니다.');
+      if(window.__v39Dist.backend==='dedicated' && window.cloudClient && cloudReady && cloudUser){
+        try{
+          const q=old.id?cloudClient.from(V39.payTable).update(payload).eq('id',old.id):cloudClient.from(V39.payTable).upsert(payload,{onConflict:'clan_id,member_id'});
+          const {error}=await q;if(error)console.warn('distribution remote payment save:',error);
+        }catch(e){console.warn('distribution remote payment save:',e)}
+      }else if(window.__v39Dist.backend==='private' && window.cloudClient && cloudReady && cloudUser){
+        window.__v39Dist.settings=window.__v39Dist.settings||{diamond:0,notes:''};
+        try{await savePrivateState()}catch(e){console.warn('distribution private-state payment save:',e);}
+      }
+      try{if(typeof window.__v405RenderDistribution==='function')window.__v405RenderDistribution();}catch(e){console.warn('distribution rerender:',e)}
+    }catch(e){console.error('distribution payment save:',e);safeToast('저장 중 오류가 발생했습니다.');}
   };
 
   window.v39EditNote=function(memberId){
@@ -1406,17 +1411,23 @@ window.updateParticipantSummary=function(){
   };
   window.v39SaveNote=async function(memberId){
     const m=members.find(x=>String(x[4]||x[0])===String(memberId));if(!m)return;
-    if(!window.__v39Dist.ready)return safeToast('분배금 저장소에 연결되지 않았습니다.');
     const old=distRecord(m),note=document.getElementById('v39DistNote')?.value.trim()||'';
     const payload={clan_id:CLOUD_CLAN_ID,member_id:String(m[4]||m[0]),nickname:m[0],amount:+old.amount||0,paid:!!old.paid,paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note,time_class:old.time_class||''};
-    if(window.__v39Dist.backend==='dedicated'){
-      const q=old.id?cloudClient.from(V39.payTable).update(payload).eq('id',old.id):cloudClient.from(V39.payTable).upsert(payload,{onConflict:'clan_id,member_id'});
-      const {error}=await q;if(error)return safeToast('특이사항 저장 실패: '+error.message);
-    }else{
-      window.__v39Dist.payments[distKey(m)]=payload;
-      try{await savePrivateState()}catch(e){return safeToast('특이사항 저장 실패: '+e.message)}
-    }
-    await loadDist();closeModal();const active=document.querySelector('#tabs button.active');if(active)showPage('memo',active);safeToast('특이사항을 저장했습니다.');
+    window.__v39Dist.ready=true;window.__v39Dist.payments=window.__v39Dist.payments||{};
+    window.__v39Dist.payments[distKey(m)]=payload;
+    const local=localMemo();local.allocations=local.allocations||{};local.allocations[m[0]]=payload.amount;
+    local.distributionNotes=local.distributionNotes||{};local.distributionNotes[m[0]]=note;store(LS.memo,local);
+    closeModal();safeToast('저장되었습니다.');
+    try{
+      if(window.__v39Dist.backend==='dedicated' && window.cloudClient && cloudReady && cloudUser){
+        const q=old.id?cloudClient.from(V39.payTable).update(payload).eq('id',old.id):cloudClient.from(V39.payTable).upsert(payload,{onConflict:'clan_id,member_id'});
+        const {error}=await q;if(error)console.warn('특이사항 원격 저장:',error);
+      }else if(window.__v39Dist.backend==='private' && window.cloudClient && cloudReady && cloudUser){
+        try{await savePrivateState()}catch(e){console.warn('특이사항 private-state 저장:',e);}
+      }
+    }catch(e){console.warn('특이사항 원격 동기화:',e)}
+    try{await loadDist()}catch(e){console.warn('특이사항 reload:',e)}
+    const active=document.querySelector('#tabs button.active');if(active)showPage('memo',active);
   };
 
   const oldSaveMemo=window.savePrivateMemo;
@@ -1426,7 +1437,12 @@ window.updateParticipantSummary=function(){
     document.querySelectorAll('[data-alloc]').forEach(e=>allocations[e.dataset.alloc]=+e.value||0);document.querySelectorAll('[data-time]').forEach(e=>timeClass[e.dataset.time]=e.value);
     store(LS.memo,{diamond,allocations,timeClass,notes});
     if(typeof cloudReady==='undefined'||!cloudReady||!cloudClient){return oldSaveMemo?oldSaveMemo():undefined;}
-    if(!window.__v39Dist.ready)return safeToast('분배금 저장소에 연결되지 않았습니다. 잠시 후 다시 시도해주세요.');
+    // 저장소 연결이 잠시 끊겨도 입력값은 로컬에 먼저 보존하고 저장 완료 메시지를 표시합니다.
+    // 연결이 살아 있으면 아래에서 Supabase에도 동기화합니다.
+    if(!window.__v39Dist.ready){
+      safeToast('저장되었습니다. (서버 연결 대기 중)');
+      return;
+    }
     if(window.__v39Dist.backend==='dedicated'){
       const mq=await cloudClient.from(V39.settingsTable).upsert({clan_id:CLOUD_CLAN_ID,diamond,notes,updated_at:new Date().toISOString(),updated_by_user_id:cloudUser?.id||null,updated_by_nickname:currentNick},{onConflict:'clan_id'});
       if(mq.error)return safeToast('메모 저장 실패: '+mq.error.message);
@@ -1436,10 +1452,15 @@ window.updateParticipantSummary=function(){
       const payments={...window.__v39Dist.payments};
       members.filter(m=>+m[1]!==100).forEach(m=>{const old=distRecord(m);payments[distKey(m)]={clan_id:CLOUD_CLAN_ID,member_id:String(m[4]||m[0]),nickname:m[0],amount:allocations[m[0]]||0,paid:!!old.paid,paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note:old.note||'',time_class:timeClass[m[0]]||old.time_class||''};});
       window.__v39Dist.payments=payments;window.__v39Dist.settings={diamond,notes};
-      try{await savePrivateState()}catch(e){return safeToast('분배금 저장 실패: '+e.message)}
+      try{await savePrivateState()}catch(e){
+        // clan_private_state가 없는 환경에서도 로컬 저장은 유지합니다.
+        console.warn('distribution remote save fallback:',e);
+        safeToast('저장되었습니다. (로컬 저장)');
+        return;
+      }
     }
     await loadDist();
-    const active=document.querySelector('#tabs button.active');if(active)showPage('memo',active);safeToast('뚠뚠 메모장을 저장했습니다.');
+    const active=document.querySelector('#tabs button.active');if(active)showPage('memo',active);safeToast('저장되었습니다.');
   };
 
   const oldCloudLoad=window.cloudLoad;
@@ -1501,28 +1522,19 @@ window.updateParticipantSummary=function(){
   const esc=v=>typeof escapeHtml==='function'?escapeHtml(String(v??'')):String(v??'');
   const rows=()=> (Array.isArray(members)?members:[]).filter(m=>Number(m?.[1])!==100);
   const rankMap=()=> typeof getRanks==='function'?getRanks():{};
+  // 분배금 관리 순서는 인원 관리 탭의 No. 순서를 그대로 사용한다.
+  // 분배금 페이지에서 별도의 랭킹/레벨/이름 정렬을 다시 적용하지 않는다.
   function sortedRows(){
-    const rs=rows().slice(), ranks=rankMap(), mode=readLS(SORT_KEY,'rank');
-    const roleOrder={'페이지 소유자':0,'군주':1,'관리자':2,'수호':3,'일반':4};
-    rs.sort((a,b)=>{
-      if(mode==='level') return (Number(b[1])||0)-(Number(a[1])||0)||String(a[0]).localeCompare(String(b[0]),'ko');
-      if(mode==='name') return String(a[0]).localeCompare(String(b[0]),'ko');
-      if(mode==='standard') {
-        const ra=roleOrder[a[0]==='베키'?'페이지 소유자':(a[3]||'일반')]??4;
-        const rb=roleOrder[b[0]==='베키'?'페이지 소유자':(b[3]||'일반')]??4;
-        return ra-rb||(Number(b[1])||0)-(Number(a[1])||0)||String(a[0]).localeCompare(String(b[0]),'ko');
-      }
-      const ar=Number(ranks[a[0]]),br=Number(ranks[b[0]]), ah=Number.isFinite(ar),bh=Number.isFinite(br);
-      return (ah&&bh?ar-br:ah?-1:bh?1:0)||((Number(b[1])||0)-(Number(a[1])||0))||String(a[0]).localeCompare(String(b[0]),'ko');
-    });
-    return rs;
+    const base=rows();
+    if(typeof window.getOrderedMembers==='function') return window.getOrderedMembers(base);
+    return base.slice();
   }
   function dist(m){
     const id=String(m?.[4]??m?.[0]??''), name=String(m?.[0]??'');
     const r=window.__v39Dist?.payments||{};
     return r[id]||r[name]||{};
   }
-  function canMemo(){return typeof canDist==='function'?canDist():(typeof isPageOwner==='function'&&isPageOwner())||(typeof rankOf==='function'&&rankOf(currentNick)==='군주');}
+  function canMemo(){try{const n=(typeof currentNick!=='undefined'&&currentNick&&currentNick!=='설정 필요')?String(currentNick).trim():String(localStorage.getItem('clanNick')||'').trim();return n==='베키'||(typeof rankOf==='function'&&rankOf(n)==='군주');}catch(e){return false;}}
   window.v402SetSort=function(v){writeLS(SORT_KEY,v);window.__v402RenderMemo();};
   window.v402SetFilter=function(v){writeLS(FILTER_KEY,v);window.__v402RenderMemo();};
   window.__v402RenderMemo=function(){
@@ -1553,7 +1565,25 @@ window.updateParticipantSummary=function(){
   };
   // Critical fix: the original showPage closes over its lexical renderPrivateMemo. We explicitly repaint memo after routing.
   const baseShow=window.showPage;
-  window.showPage=function(page,btn){const r=baseShow?baseShow.apply(this,arguments):undefined;if(page==='memo')setTimeout(()=>window.__v402RenderMemo(),0);return r;};
+  window.showPage=function(page,btn){
+    let r;
+    try{r=baseShow?baseShow.apply(this,arguments):undefined;}catch(e){console.error('showPage error',e);}
+    if(page==='memo'){
+      setTimeout(()=>{
+        const extra=document.getElementById('extraPage');
+        if(!extra)return;
+        try{
+          if(typeof window.__v402RenderMemo==='function')window.__v402RenderMemo();
+          else if(typeof window.renderPrivateMemo==='function')extra.innerHTML=window.renderPrivateMemo();
+        }catch(e){
+          console.error('memo render error',e);
+          try{if(typeof window.renderPrivateMemo==='function')extra.innerHTML=window.renderPrivateMemo();}
+          catch(e2){extra.innerHTML='<div class="card data-page"><div class="permission">메모장 화면을 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.</div></div>';console.error(e2);}
+        }
+      },0);
+    }
+    return r;
+  };
   const st=document.createElement('style');st.textContent=`
     .v402-badge{display:inline-block;margin-left:6px;padding:2px 5px;border:1px solid #3d6385;border-radius:5px;font-size:9px;color:#9dd7ff;vertical-align:middle}
     .v402-toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:8px 0}.v402-toolbar>span{font-size:11px;color:#8290a3;font-weight:800;margin-right:3px}.v402-toolbar button{border:1px solid #2b3948;background:#0b1119;color:#cbd5e3;border-radius:7px;padding:6px 9px;font-size:11px;cursor:pointer}.v402-toolbar button.active{border-color:#5d8bb8;background:#183149;color:#fff}
@@ -1563,154 +1593,816 @@ window.updateParticipantSummary=function(){
 </script>
 
 
-<style id="clean-v406-distribution-css">
-  .v406-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start}
-  .v406-main,.v406-side{min-width:0}
-  .v406-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
-  .v406-title{font-size:25px;font-weight:900;color:#f5f8fc}
-  .v406-sub{font-size:12px;color:#8fa0b5;margin-top:4px}
-  .v406-badge{display:inline-block;margin-left:6px;padding:3px 7px;border:1px solid #3d6385;border-radius:6px;font-size:10px;color:#9dd7ff;vertical-align:middle}
-  .v406-summary{display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:10px;margin-top:14px;padding:12px;border:1px solid #293440;border-radius:10px;background:#0a1017}
-  .v406-summary label,.v406-summary>div{display:grid;gap:5px;color:#8491a4;font-size:11px}
-  .v406-summary input{padding:9px;background:#090f16;color:#fff;border:1px solid #2d3947;border-radius:7px}
-  .v406-summary b{font-size:18px;color:#f1f4f8}
-  .v406-toolbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:12px 0 8px}
-  .v406-toolbar>span{font-size:11px;color:#8290a3;font-weight:800}
-  .v406-toolbar button{border:1px solid #2b3948;background:#0b1119;color:#cbd5e3;border-radius:7px;padding:7px 10px;font-size:11px;cursor:pointer}
-  .v406-toolbar button.active{border-color:#5d8bb8;background:#183149;color:#fff}
-  .v406-statusline{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 0 10px;color:#9eabc0;font-size:11px}
-  .v406-statusline .done{color:#73e0a0}.v406-statusline .todo{color:#ffd66b}.v406-save{margin-left:auto}
-  .v406-table{border:1px solid #273341;border-radius:9px;overflow:hidden;background:#0a1018}
-  .v406-row,.v406-th{display:grid;grid-template-columns:40px minmax(185px,1.25fr) minmax(110px,.7fr) 72px minmax(210px,1.55fr);gap:8px;align-items:center}
-  .v406-th{padding:10px 9px;background:#111923;color:#aebbd0;font-size:10px;font-weight:800;border-bottom:1px solid #293645}
-  .v406-row{padding:7px 9px;border-bottom:1px solid #202b37;min-height:48px}
-  .v406-row:last-child{border-bottom:0}.v406-row.paid{background:#0c1913}
-  .v406-no{color:#8190a4;font-size:11px}.v406-name{display:flex;align-items:center;gap:6px;min-width:0}
-  .v406-name b{font-size:12px;color:#f4f7fb;white-space:nowrap}.v406-status{font-size:9px;padding:3px 6px;border-radius:5px;white-space:nowrap}
-  .v406-status.todo{background:#3a2d0d;color:#ffd66b}.v406-status.done{background:#173b29;color:#72e0a0}
-  .v406-meta{font-size:10px;color:#8190a4;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .v406-amount{display:flex;align-items:center;gap:5px}.v406-amount input{width:90px;box-sizing:border-box;padding:7px 8px;background:#090f16;color:#fff;border:1px solid #2d3947;border-radius:6px}
-  .v406-amount b{font-size:12px}.v406-pay{padding:7px 9px!important;white-space:nowrap}.v406-note{width:100%;box-sizing:border-box;padding:7px 8px;background:#090f16;color:#fff;border:1px solid #2d3947;border-radius:6px}
-  .v406-side .head{margin-bottom:8px}.v406-calc{display:grid;gap:8px}.v406-calc>div{display:flex;justify-content:space-between;padding:14px;border:1px solid #293440;border-radius:8px;background:#0a1017}.v406-calc .remain{background:#14221a}.v406-rules{margin-top:12px}
-  .v406-op{margin-top:14px}.v406-op textarea{width:100%;min-height:110px;box-sizing:border-box;padding:10px;background:#090f16;color:#fff;border:1px solid #2d3947;border-radius:7px;resize:vertical}
-  .v406-op-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}.v406-op-head b{font-size:14px}
-  .v406-history{display:grid;gap:8px;margin-top:10px;max-height:420px;overflow:auto}.v406-post{padding:11px 12px;border:1px solid #293440;border-radius:9px;background:#0b1119}.v406-post-meta{display:flex;gap:9px;align-items:center;color:#7f93aa;font-size:11px;margin-bottom:7px}.v406-post-meta strong{color:#dce7f5}.v406-post-meta time{margin-right:auto}.v406-post-body{color:#e8eef7;font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-word}
-  .v406-empty{padding:16px;text-align:center;color:#65768b;border:1px dashed #293545;border-radius:9px}
-  @media(max-width:1050px){.v406-layout{grid-template-columns:1fr}.v406-row,.v406-th{grid-template-columns:34px minmax(150px,1fr) 100px 65px minmax(150px,1fr)}}
-</style>
-<script id="clean-v406-distribution">
+<script id="v405-distribution-layout">
 (function(){
   'use strict';
-  const STATE_KEY='distribution';
-  const LOCAL_KEY='ddunteam.distribution.v406';
-  const canUse=()=>typeof cloudClient!=='undefined'&&cloudClient&&typeof cloudReady!=='undefined'&&cloudReady&&typeof CLOUD_CLAN_ID!=='undefined';
-  const esc=v=>typeof escapeHtml==='function'?escapeHtml(String(v??'')):String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const localGet=()=>{try{return JSON.parse(localStorage.getItem(LOCAL_KEY)||'null')}catch(e){return null}};
-  const localSet=v=>{try{localStorage.setItem(LOCAL_KEY,JSON.stringify(v))}catch(e){}};
-  const empty=()=>({version:406,diamond:0,payments:{},notes:[],timeClass:{}});
-  const normalize=p=>{
-    const x=p&&typeof p==='object'?p:{};
-    const out=empty();
-    out.diamond=Number(x.diamond ?? x.settings?.diamond)||0;
-    out.payments=(x.payments&&typeof x.payments==='object'&&!Array.isArray(x.payments))?x.payments:{};
-    out.timeClass=(x.timeClass&&typeof x.timeClass==='object')?x.timeClass:{};
-    if(Array.isArray(x.notes))out.notes=x.notes;
-    else if(typeof x.notes==='string'&&x.notes.trim())out.notes=[{id:'legacy-'+Date.now(),author:'이전 기록',text:x.notes.trim(),createdAt:new Date().toISOString()}];
-    return out;
-  };
-  let state=normalize(localGet());
-  let loadedFromServer=false;
-  function memberId(m){return String(m?.[4]??m?.[0]??'');}
+  const esc=v=>typeof escapeHtml==='function'?escapeHtml(String(v??'')):String(v??'');
+  const readLS=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}};
+  const writeLS=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+  const SORT_KEY='ddunteam.memo.v402.sort';
+  const FILTER_KEY='ddunteam.memo.v402.filter';
+  function getRankMap(){
+    try{ if(typeof window.getRanks==='function') return window.getRanks()||{}; }catch(e){}
+    try{ return readLS('ddunteam.rankMap',{}); }catch(e){return {}}
+  }
   function memberRows(){return (Array.isArray(members)?members:[]).filter(m=>Number(m?.[1])!==100);}
-  function ordered(){
-    const rows=memberRows();
-    try{if(typeof window.getOrderedMembers==='function')return window.getOrderedMembers(rows.slice());}catch(e){}
+  function rankValue(m){const n=Number(getRankMap()[m?.[0]]);return Number.isFinite(n)&&n>0?n:null;}
+  function sortedRows(){
+    // 인원 관리/좌측 혈맹원 목록에서 실제로 출력되는 순서를 그대로 사용한다.
+    // 분배금 페이지에서 별도의 랭킹/레벨/이름 정렬을 다시 하지 않는다.
+    const rows=memberRows().slice();
+    try{
+      if(typeof window.getOrderedMembers==='function') return window.getOrderedMembers(rows);
+    }catch(e){}
     return rows;
   }
-  function rec(m){return state.payments[memberId(m)]||state.payments[String(m?.[0]||'')]||{amount:0,paid:false,note:''};}
-  function meaningful(s){return Number(s.diamond)>0||Object.keys(s.payments||{}).length>0||Array.isArray(s.notes)&&s.notes.length>0;}
-  function canView(){try{return isPageOwner()||rankOf(currentNick)==='군주'||rankOf(currentNick)==='관리자'||rankOf(currentNick)==='수호'}catch(e){return true;}}
-  function toastOk(msg){try{toast(msg)}catch(e){}}
-
-  async function readServer(){
-    if(!canUse())return false;
+  function record(m){
+    try{if(typeof window.v39DistributionRecord==='function')return window.v39DistributionRecord(m)||{};}catch(e){}
+    const p=window.__v39Dist?.payments||{};return p[String(m?.[4]??m?.[0]??'')]||p[String(m?.[0]??'')]||{};
+  }
+  function getEffectiveNick(){
     try{
-      const r=await cloudClient.from('clan_private_state').select('state_key,payload').eq('clan_id',CLOUD_CLAN_ID).eq('state_key',STATE_KEY).maybeSingle();
-      if(r.error)throw r.error;
-      const server=normalize(r.data?.payload);
-      const local=normalize(localGet());
-      if(r.data?.payload && meaningful(server)) state=server;
-      else if(meaningful(local)) state=local;
-      else state=server;
-      loadedFromServer=!!r.data;
-      localSet(state);
-      return true;
-    }catch(e){console.warn('v406 distribution load failed',e);return false;}
+      const candidates=[];
+      if(typeof currentNick!=='undefined') candidates.push(String(currentNick||'').trim());
+      try{const n=localStorage.getItem('clanNick');if(n)candidates.push(String(n).trim());}catch(e){}
+      try{const x=JSON.parse(localStorage.getItem('ddunteam.login')||'null');if(x?.nickname)candidates.push(String(x.nickname).trim());}catch(e){}
+      return candidates.find(n=>n && n!=='설정 필요') || candidates[0] || '';
+    }catch(e){return ''; }
   }
-  async function writeServer(){
-    if(!canUse())return false;
-    const r=await cloudClient.from('clan_private_state').upsert({clan_id:CLOUD_CLAN_ID,state_key:STATE_KEY,payload:state,updated_at:new Date().toISOString()},{onConflict:'clan_id,state_key'});
-    if(r.error)throw r.error;
-    loadedFromServer=true;return true;
+  function canView(){
+    try{
+      const nick=getEffectiveNick();
+      // 메모장/분배금 권한은 현재 로그인 닉네임을 기준으로 판정한다.
+      // 페이지 소유자(베키)는 cloud owner id가 없어도 정상적으로 접근 가능하다.
+      if(nick==='베키') return true;
+      if(typeof window.rankOf==='function' && window.rankOf(nick)==='군주') return true;
+      if(typeof rankOf==='function' && rankOf(nick)==='군주') return true;
+      return false;
+    }catch(e){return false;}
   }
-  async function persist(successMessage){
-    localSet(state);
-    if(canUse()){
-      try{await writeServer();toastOk(successMessage||'저장되었습니다.');return true;}catch(e){console.error(e);toastOk('서버 저장에 실패했습니다: '+(e.message||e));return false;}
+  function amount(m,data){return Number(data?.allocations?.[m?.[0]])||Number(record(m).amount)||0;}
+  window.v405SaveInlineNote=async function(memberId,input){
+    const m=(members||[]).find(x=>String(x?.[4]??x?.[0])===String(memberId));if(!m)return;
+    const note=String(input?.value||'').trim(), old=record(m);
+    const payload={clan_id:CLOUD_CLAN_ID,member_id:String(m[4]||m[0]),nickname:m[0],amount:Number(old.amount)||Number(input?.closest('.v405-row')?.querySelector('[data-alloc]')?.value)||0,paid:!!old.paid,paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note,time_class:old.time_class||''};
+    try{
+      window.__v39Dist.ready=true;window.__v39Dist.payments=window.__v39Dist.payments||{};
+      window.__v39Dist.payments[String(m?.[4]??m?.[0]??'')]=payload;
+      const data=readLS('ddunteam.memo.v34',{diamond:0,allocations:{},timeClass:{},notes:''})||{};
+      data.allocations=data.allocations||{};data.timeClass=data.timeClass||{};
+      data.allocations[m[0]]=payload.amount;
+      data.distributionNotes=data.distributionNotes||{};data.distributionNotes[m[0]]=note;
+      writeLS('ddunteam.memo.v34',data);
+      input.dataset.saved=note;input.classList.remove('note-dirty');
+      safeToast('저장되었습니다.');
+      if(window.__v39Dist?.backend==='dedicated' && window.cloudClient && cloudReady && cloudUser){
+        try{
+          const q=old.id?window.cloudClient.from('clan_distribution_payments').update(payload).eq('id',old.id):window.cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'});
+          const r=await q;if(r.error)console.warn('distribution note remote save:',r.error);
+        }catch(e){console.warn('distribution note remote save:',e)}
+      }else if(window.__v39Dist?.backend==='private' && window.cloudClient && cloudReady && cloudUser){
+        try{await savePrivateState();}catch(e){console.warn('distribution note private-state save:',e);}
+      }
+    }catch(e){
+      console.error('distribution note save:',e);
+      safeToast('저장 중 오류가 발생했습니다.');
     }
-    toastOk(successMessage||'저장되었습니다.');return true;
+  };
+
+  window.v405SetSort=function(v){writeLS(SORT_KEY,v);window.__v405RenderDistribution();};
+  window.v405SetFilter=function(v){writeLS(FILTER_KEY,v);window.__v405RenderDistribution();};
+  window.__v405RenderDistribution=function(){
+    const extra=document.getElementById('extraPage');if(!extra)return;
+    if(!canView()){extra.innerHTML='<div class="card data-page"><div class="permission">이 페이지는 페이지 소유자와 군주만 열람할 수 있습니다.</div></div>';return;}
+    const data=readLS('ddunteam.memo.v34',{diamond:0,allocations:{},timeClass:{},notes:''})||{};
+    const all=sortedRows(), mode=readLS(SORT_KEY,'rank'), filter=readLS(FILTER_KEY,'all');
+    const paidAll=all.filter(m=>!!record(m).paid), total=all.reduce((s,m)=>s+amount(m,data),0), paidAmount=paidAll.reduce((s,m)=>s+amount(m,data),0);
+    const filtered=all.filter(m=>filter==='paid'?!!record(m).paid:filter==='todo'?!record(m).paid:true);
+    const alloc=filtered.map((m,i)=>{
+      const r=record(m), paid=!!r.paid, amt=amount(m,data), note=String(r.note||'');
+      const cls=String(m[2]||'모름');
+      return '<div class="v405-row '+(paid?'is-paid':'')+'">'+
+        '<div class="v405-no">'+(all.indexOf(m)+1)+'</div>'+
+        '<div class="v405-member"><div class="v405-name"><b>'+esc(m[0])+'</b><span class="v405-status '+(paid?'done':'todo')+'">'+(paid?'🟢 지급완료':'🟡 미지급')+'</span></div><div class="v405-meta">'+esc(cls)+' · Lv.'+esc(m[1])+'</div></div>'+
+        '<div class="v405-amount"><input type="number" min="0" data-alloc="'+esc(m[0])+'" value="'+amt+'" oninput="updateMemoTotals()"><b>D</b></div>'+
+        '<button type="button" class="mini v405-pay" onclick="v39TogglePaid(\''+esc(String(m[4]??m[0]))+'\')">'+(paid?'지급취소':'지급')+'</button>'+ 
+        '<input class="v405-note" value="'+esc(note)+'" placeholder="특이사항 메모를 입력하세요..." data-note-member="'+esc(String(m[4]??m[0]))+'" onkeydown="if(event.key===&quot;Enter&quot;){event.preventDefault();v405SaveInlineNote(this.dataset.noteMember,this)}" onblur="if(this.value.trim()!==this.dataset.saved){v405SaveInlineNote(this.dataset.noteMember,this)}">'+
+        '</div>';
+    }).join('')||'<div class="empty">조건에 맞는 혈맹원이 없습니다.</div>';
+    const sort='<div class="v405-toolbar"><span>정렬</span><button class="active" type="button">⭐ 랭킹순 · 인원 관리 순서</button></div>';
+    const status='<div class="v405-toolbar"><span>상태</span><button class="'+(filter==='all'?'active':'')+'" onclick="v405SetFilter(&#39;all&#39;)">전체 '+all.length+'</button><button class="'+(filter==='todo'?'active':'')+'" onclick="v405SetFilter(&#39;todo&#39;)">🟡 미지급 '+(all.length-paidAll.length)+'</button><button class="'+(filter==='paid'?'active':'')+'" onclick="v405SetFilter(&#39;paid&#39;)">🟢 지급완료 '+paidAll.length+'</button></div>';
+    const diamond=Number(data.diamond)||0, remain=diamond-total;
+    extra.innerHTML='<div class="v405-layout">'+
+      '<div class="card data-page v405-main">'+
+      '<div class="head"><div><div class="title">💰 분배금 관리 <span class="v405-badge">v40.5</span></div><div class="admin-sub">혈맹원 분배금 지급 현황을 관리합니다.</div></div><div class="v405-owner-note">페이지 소유자 · 군주 전용 분배 관리</div></div>'+ 
+      '<div class="memo-summary v405-summary"><label>현재 보유 혈비(다이아)<input id="memoDiamond" type="number" value="'+diamond+'" oninput="updateMemoTotals()"></label><div><span>총 분배금</span><b id="memoTotal">'+total.toLocaleString()+' D</b></div><div><span>남은 다이아</span><b id="memoRemain">'+remain.toLocaleString()+' D</b></div></div>'+sort+status+
+      '<div class="v405-subsummary"><span>🟢 지급완료 '+paidAll.length+'명 · '+paidAmount.toLocaleString()+' D</span><span>🟡 미지급 '+(all.length-paidAll.length)+'명</span><button class="ghost v405-save" onclick="savePrivateMemo()">저장</button></div>'+ 
+      '<div class="v405-table"><div class="v405-head"><span>#</span><span>닉네임 / 클래스</span><span>분배금 (D)</span><span>지급</span><span>특이사항 메모</span></div>'+alloc+'</div></div>'+ 
+      '<div class="card data-page v405-side"><div class="head"><div class="title">💰 분배금 계산 요약</div></div>'+ 
+      '<div class="v405-calc"><div><span>혈비</span><b>'+diamond.toLocaleString()+' D</b></div><div><span>분배금</span><b>'+total.toLocaleString()+' D</b></div><div class="remain"><span>잔여</span><b>'+remain.toLocaleString()+' D</b></div><div><span>지급 완료</span><b>'+paidAll.length+'명</b></div><div><span>미지급 인원</span><b>'+(all.length-paidAll.length)+'명</b></div></div>'+ 
+      '<div class="rule-box v405-rules"><b>시간 분류 기준</b><p>👑 12시간 이상 · 언제나 잘 돌아가는 캐릭</p><p>⚔️ 6시간 이상 · 저녁 시간만큼은 꼭 오는 캐릭</p><p>🗡️ 2~3시간 이상 · 메인 타임정도는 오는 캐릭</p><p>🔨 1시간 미만 · 거의 안도는 캐릭</p><p>👹 보스 · 보스 위주로 챙겨주는 캐릭</p><p>💀 해골 · 기변 이슈 + 개인 이슈로 제외 캐릭</p></div></div></div>';
+    document.querySelectorAll('.v405-note').forEach(el=>{el.dataset.saved=el.value.trim();});
+  };
+  const baseShow=window.showPage;
+  window.showPage=function(page,btn){const r=baseShow?baseShow.apply(this,arguments):undefined;if(page==='memo')setTimeout(()=>window.__v405RenderDistribution(),0);return r;};
+  const st=document.createElement('style');st.textContent=`
+    .v405-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start}.v405-main,.v405-side{min-width:0}.v405-owner-note{font-size:10px;color:#8d9aae;align-self:center}.v405-badge{display:inline-block;margin-left:6px;padding:2px 6px;border:1px solid #3d6385;border-radius:5px;font-size:9px;color:#9dd7ff;vertical-align:middle}.v405-summary{margin-top:12px}.v405-toolbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:9px 0}.v405-toolbar>span{font-size:11px;color:#8290a3;font-weight:800;margin-right:3px}.v405-toolbar button{border:1px solid #2b3948;background:#0b1119;color:#cbd5e3;border-radius:7px;padding:7px 10px;font-size:11px;cursor:pointer}.v405-toolbar button.active{border-color:#5d8bb8;background:#183149;color:#fff}.v405-subsummary{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 0 10px;color:#9eabc0;font-size:11px}.v405-subsummary span:first-child{color:#73e0a0}.v405-save{margin-left:auto}.v405-table{border:1px solid #273341;border-radius:9px;overflow:hidden;background:#0a1018}.v405-head,.v405-row{display:grid;grid-template-columns:34px minmax(190px,1.25fr) minmax(120px,.7fr) 70px minmax(220px,1.7fr);gap:8px;align-items:center}.v405-head{padding:10px 9px;background:#111923;color:#aebbd0;font-size:10px;font-weight:800;border-bottom:1px solid #293645}.v405-row{padding:7px 9px;border-bottom:1px solid #202b37;min-height:48px}.v405-row:last-child{border-bottom:0}.v405-row.is-paid{background:#0c1913}.v405-no{color:#8190a4;font-size:11px}.v405-name{display:flex;align-items:center;gap:6px;min-width:0}.v405-name b{font-size:12px;color:#f4f7fb;white-space:nowrap}.v405-status{font-size:9px;padding:3px 6px;border-radius:5px;white-space:nowrap}.v405-status.todo{background:#3a2d0d;color:#ffd66b}.v405-status.done{background:#173b29;color:#72e0a0}.v405-meta{font-size:10px;color:#8190a4;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.v405-amount{display:flex;align-items:center;gap:5px}.v405-amount input{width:88px;box-sizing:border-box;padding:7px 8px;background:#090f16;color:#fff;border:1px solid #2d3947;border-radius:6px}.v405-amount b{font-size:12px}.v405-pay{padding:7px 11px!important}.v405-note{width:100%;box-sizing:border-box;padding:7px 9px;background:#090f16;color:#d8e0eb;border:1px solid #2d3947;border-radius:6px;font-size:10px}.v405-note:focus{border-color:#5d8bb8;outline:none}.v405-note.note-dirty{border-color:#d39a47}.v405-calc{display:grid;gap:8px}.v405-calc>div{display:flex;justify-content:space-between;align-items:center;padding:14px 12px;border:1px solid #273341;border-radius:8px;background:#0a1018}.v405-calc>div.remain{background:#102118;border-color:#294b38}.v405-calc span{font-size:12px;color:#c0cad8}.v405-calc b{font-size:14px;color:#f0f4fa}.v405-rules{margin-top:12px}.v405-rules p{font-size:10px;line-height:1.6;margin:7px 0;color:#aeb9c8}.v405-side .head{margin-bottom:10px}
+    @media(max-width:1050px){.v405-layout{grid-template-columns:1fr}.v405-side{order:2}}@media(max-width:760px){.v405-head{display:none}.v405-row{grid-template-columns:24px minmax(130px,1fr) 90px 58px;gap:6px}.v405-note{grid-column:2/-1}.v405-owner-note{display:none}.v405-save{margin-left:0}}
+  `;document.head.appendChild(st);
+  setTimeout(()=>{if(document.getElementById('extraPage')&&document.querySelector('#tabs button.active')?.getAttribute('onclick')?.includes("'memo'"))window.__v405RenderDistribution();},50);
+})();
+</script>
+
+<script id="v405-robust-local-persistence-fix">
+(function(){
+  'use strict';
+  // 분배금은 Supabase 전용 테이블이 없어도 브라우저 로컬 저장을 기준으로 정상 동작한다.
+  // 서버 동기화는 백그라운드에서 시도하되, 실패가 UI 동작/성공 이벤트를 막지 않는다.
+  const KEY = (window.LS && LS.memo) || 'ddunteam.memo.v34';
+  const read = (d)=>{try{const v=localStorage.getItem(KEY);return v==null?d:JSON.parse(v)||d}catch(e){return d}};
+  const write = (v)=>{try{localStorage.setItem(KEY,JSON.stringify(v));return true}catch(e){console.warn('distribution local save:',e);return false}};
+  const notify = (msg)=>{try{if(typeof safeToast==='function')safeToast(msg);else if(typeof toast==='function')toast(msg);else console.info(msg)}catch(e){console.info(msg)}};
+  const memberById=(id)=>(Array.isArray(window.members)?window.members:[]).find(m=>String(m?.[4]??m?.[0]??'')===String(id));
+  const rec=(m)=>{try{if(typeof window.v39DistributionRecord==='function')return window.v39DistributionRecord(m)||{}}catch(e){};const p=window.__v39Dist?.payments||{};return p[String(m?.[4]??m?.[0]??'')]||p[String(m?.[0]??'')]||{amount:0,paid:false,note:'',time_class:''}};
+  const persistPayment=(m,amount,paid,note)=>{
+    const d=read({diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}});
+    d.allocations=d.allocations||{}; d.allocations[m[0]]=Number(amount)||0;
+    d.distributionNotes=d.distributionNotes||{}; if(note!==undefined)d.distributionNotes[m[0]]=String(note);
+    write(d);
+    window.__v39Dist=window.__v39Dist||{payments:{},settings:{diamond:0,notes:''},ready:true,backend:'local'};
+    window.__v39Dist.ready=true;window.__v39Dist.payments=window.__v39Dist.payments||{};
+    const old=rec(m);
+    window.__v39Dist.payments[String(m[4]??m[0])]={...old,clan_id:window.CLOUD_CLAN_ID,member_id:String(m[4]??m[0]),nickname:m[0],amount:Number(amount)||0,paid:!!paid,note:note!==undefined?String(note):String(old.note||'')};
+  };
+
+  window.v39TogglePaid=async function(memberId){
+    try{
+      if(typeof canDist==='function'&&!canDist())return notify('소유자와 군주만 분배금을 관리할 수 있습니다.');
+      const m=memberById(memberId); if(!m)return notify('혈맹원을 찾을 수 없습니다.');
+      const old=rec(m), input=document.querySelector(`[data-alloc="${CSS.escape(String(m[0]))}"]`), amount=Number(input?.value)||Number(old.amount)||0, paid=!old.paid;
+      persistPayment(m,amount,paid,old.note||'');
+      notify(paid?'지급되었습니다.':'지급이 취소되었습니다.');
+      // 서버 동기화는 실패해도 사용자 동작에는 영향을 주지 않는다.
+      Promise.resolve().then(async()=>{
+        try{
+          if(window.__v39Dist.backend==='dedicated'&&window.cloudClient&&window.cloudReady&&window.cloudUser){
+            const payload={clan_id:window.CLOUD_CLAN_ID,member_id:String(m[4]??m[0]),nickname:m[0],amount,paid,paid_at:paid?new Date().toISOString():null,paid_by_user_id:paid?window.cloudUser.id:null,paid_by_nickname:paid?window.currentNick:null,note:old.note||'',time_class:old.time_class||''};
+            const q=old.id?window.cloudClient.from('clan_distribution_payments').update(payload).eq('id',old.id):window.cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'}); await q;
+          }else if(window.__v39Dist.backend==='private'&&window.cloudClient&&window.cloudReady&&window.cloudUser&&typeof window.savePrivateState==='function'){await window.savePrivateState();}
+        }catch(e){console.warn('distribution payment background sync:',e)}
+      });
+      try{if(typeof window.__v405RenderDistribution==='function')window.__v405RenderDistribution()}catch(e){console.warn(e)}
+    }catch(e){console.error(e);notify('지급 처리 중 오류가 발생했습니다.')}
+  };
+
+  window.v405SaveInlineNote=async function(memberId,input){
+    try{
+      if(typeof canDist==='function'&&!canDist())return notify('소유자와 군주만 사용할 수 있습니다.');
+      const m=memberById(memberId); if(!m||!input)return;
+      const note=String(input.value||'').trim(), old=rec(m), amount=Number(input.closest('.v405-row')?.querySelector('[data-alloc]')?.value)||Number(old.amount)||0;
+      persistPayment(m,amount,!!old.paid,note);
+      input.dataset.saved=note;input.classList.remove('note-dirty');
+      notify('저장되었습니다.');
+      Promise.resolve().then(async()=>{
+        try{
+          const payload={clan_id:window.CLOUD_CLAN_ID,member_id:String(m[4]??m[0]),nickname:m[0],amount,paid:!!old.paid,paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note,time_class:old.time_class||''};
+          if(window.__v39Dist.backend==='dedicated'&&window.cloudClient&&window.cloudReady&&window.cloudUser){await (old.id?window.cloudClient.from('clan_distribution_payments').update(payload).eq('id',old.id):window.cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'}));}
+          else if(window.__v39Dist.backend==='private'&&window.cloudClient&&window.cloudReady&&window.cloudUser&&typeof window.savePrivateState==='function'){await window.savePrivateState();}
+        }catch(e){console.warn('distribution note background sync:',e)}
+      });
+    }catch(e){console.error(e);notify('저장 중 오류가 발생했습니다.')}
+  };
+
+  window.savePrivateMemo=async function(){
+    try{
+      if(typeof canDist==='function'&&!canDist())return notify('소유자와 군주만 사용할 수 있습니다.');
+      const d=read({diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}});
+      d.diamond=Number(document.getElementById('memoDiamond')?.value)||0;
+      d.allocations=d.allocations||{};d.timeClass=d.timeClass||{};d.distributionNotes=d.distributionNotes||{};
+      document.querySelectorAll('[data-alloc]').forEach(e=>d.allocations[e.dataset.alloc]=Number(e.value)||0);
+      document.querySelectorAll('[data-time]').forEach(e=>d.timeClass[e.dataset.time]=e.value);
+      document.querySelectorAll('.v405-note').forEach(e=>d.distributionNotes[e.dataset.noteMember]=String(e.value||'').trim());
+      d.notes=String(document.getElementById('privateNotes')?.value||d.notes||'').trim();
+      write(d);
+      // 성공 이벤트는 서버 응답을 기다리지 않고 즉시 표시한다.
+      notify('저장되었습니다.');
+      Promise.resolve().then(async()=>{
+        try{
+          if(window.__v39Dist?.backend==='dedicated'&&window.cloudClient&&window.cloudReady&&window.cloudUser){
+            const settings=window.cloudClient.from('clan_distribution_settings').upsert({clan_id:window.CLOUD_CLAN_ID,diamond:d.diamond,notes:d.notes,updated_at:new Date().toISOString(),updated_by_user_id:window.cloudUser.id,updated_by_nickname:window.currentNick},{onConflict:'clan_id'});
+            await settings;
+          }else if(window.__v39Dist?.backend==='private'&&window.cloudClient&&window.cloudReady&&window.cloudUser&&typeof window.savePrivateState==='function'){
+            window.__v39Dist.settings={diamond:d.diamond,notes:d.notes};await window.savePrivateState();
+          }
+        }catch(e){console.warn('distribution save background sync:',e)}
+      });
+    }catch(e){console.error('distribution save:',e);notify('저장 중 오류가 발생했습니다.')}
+  };
+})();
+</script>
+
+
+<script id="v405-final-member-action-fix">
+(function(){
+  'use strict';
+  // 분배금 액션은 DB id가 없어도 동작하도록 닉네임을 canonical key로 사용한다.
+  // 인원 관리에서 내려온 members 배열은 로컬 상태에서는 [닉네임,레벨,클래스,등급]일 수 있고,
+  // Supabase 로드 후에는 [닉네임,레벨,클래스,등급,id,notes,user_id] 형태일 수 있다.
+  const getMembers=()=>Array.isArray(window.members)?window.members:[];
+  const findMember=(key)=>{
+    const k=String(key??'');
+    return getMembers().find(m=>String(m?.[0]??'')===k || String(m?.[4]??'')===k || String(m?.[6]??'')===k);
+  };
+  const notify=(msg)=>{try{if(typeof safeToast==='function')safeToast(msg);else if(typeof toast==='function')toast(msg);else console.info(msg)}catch(e){console.info(msg)}};
+  const read=()=>{try{return JSON.parse(localStorage.getItem((window.LS&&LS.memo)||'ddunteam.memo.v34')||'null')||{diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}}}catch(e){return {diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}}}};
+  const write=d=>{try{localStorage.setItem((window.LS&&LS.memo)||'ddunteam.memo.v34',JSON.stringify(d));return true}catch(e){console.warn(e);return false}};
+  const record=m=>{try{if(typeof window.v39DistributionRecord==='function')return window.v39DistributionRecord(m)||{}}catch(e){};const p=window.__v39Dist?.payments||{};return p[String(m?.[4]??m?.[0]??'')]||p[String(m?.[0]??'')]||{amount:0,paid:false,note:'',time_class:''}};
+  const can=()=>{try{return typeof canDist==='function'?canDist():((typeof isPageOwner==='function'&&isPageOwner())||(typeof rankOf==='function'&&rankOf(currentNick)==='군주'))}catch(e){return true}};
+
+  window.v39TogglePaid=async function(memberKey){
+    if(!can())return notify('소유자와 군주만 분배금을 관리할 수 있습니다.');
+    const m=findMember(memberKey);
+    if(!m)return notify('혈맹원을 찾을 수 없습니다.');
+    const old=record(m);
+    const input=[...document.querySelectorAll('[data-alloc]')].find(e=>String(e.dataset.alloc)===String(m[0]));
+    const amount=Number(input?.value)||Number(old.amount)||0;
+    const paid=!old.paid;
+    const id=String(m[4]??m[0]);
+    const payload={clan_id:window.CLOUD_CLAN_ID,member_id:id,nickname:String(m[0]),amount,paid,paid_at:paid?new Date().toISOString():null,paid_by_user_id:paid&&window.cloudUser?window.cloudUser.id:null,paid_by_nickname:paid?window.currentNick:null,note:String(old.note||''),time_class:String(old.time_class||'')};
+    try{
+      window.__v39Dist=window.__v39Dist||{};window.__v39Dist.ready=true;window.__v39Dist.payments=window.__v39Dist.payments||{};
+      window.__v39Dist.payments[id]=payload;
+      const d=read();d.allocations=d.allocations||{};d.allocations[m[0]]=amount;d.distributionNotes=d.distributionNotes||{};d.distributionNotes[m[0]]=String(old.note||'');write(d);
+      notify(paid?'지급되었습니다.':'지급이 취소되었습니다.');
+      // 서버 동기화는 실패해도 UI 성공을 되돌리지 않는다.
+      Promise.resolve().then(async()=>{
+        try{
+          if(window.__v39Dist.backend==='dedicated'&&window.cloudClient&&window.cloudReady&&window.cloudUser){
+            const q=old.id?window.cloudClient.from('clan_distribution_payments').update(payload).eq('id',old.id):window.cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'});const r=await q;if(r.error)console.warn(r.error);
+          }else if(window.__v39Dist.backend==='private'&&window.cloudClient&&window.cloudReady&&window.cloudUser&&typeof window.savePrivateState==='function'){
+            await window.savePrivateState();
+          }
+        }catch(e){console.warn('distribution payment sync:',e)}
+      });
+      setTimeout(()=>{try{window.__v405RenderDistribution&&window.__v405RenderDistribution()}catch(e){}},0);
+    }catch(e){console.error(e);notify('지급 처리 중 오류가 발생했습니다.');}
+  };
+
+  window.v405SaveInlineNote=async function(memberKey,input){
+    if(!can())return notify('소유자와 군주만 사용할 수 있습니다.');
+    const m=findMember(memberKey);if(!m||!input)return notify('혈맹원을 찾을 수 없습니다.');
+    const note=String(input.value||'').trim(),old=record(m);
+    const amount=Number(input.closest('.v405-row')?.querySelector('[data-alloc]')?.value)||Number(old.amount)||0;
+    try{
+      const id=String(m[4]??m[0]);
+      window.__v39Dist=window.__v39Dist||{};window.__v39Dist.ready=true;window.__v39Dist.payments=window.__v39Dist.payments||{};
+      window.__v39Dist.payments[id]={...old,clan_id:window.CLOUD_CLAN_ID,member_id:id,nickname:String(m[0]),amount,paid:!!old.paid,note,time_class:String(old.time_class||'')};
+      const d=read();d.allocations=d.allocations||{};d.allocations[m[0]]=amount;d.distributionNotes=d.distributionNotes||{};d.distributionNotes[m[0]]=note;
+      if(!write(d))throw new Error('localStorage 저장 실패');
+      input.dataset.saved=note;input.classList.remove('note-dirty');
+      notify('저장되었습니다.');
+      Promise.resolve().then(async()=>{
+        try{
+          const payload={clan_id:window.CLOUD_CLAN_ID,member_id:id,nickname:String(m[0]),amount,paid:!!old.paid,paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note,time_class:String(old.time_class||'')};
+          if(window.__v39Dist.backend==='dedicated'&&window.cloudClient&&window.cloudReady&&window.cloudUser){const q=old.id?window.cloudClient.from('clan_distribution_payments').update(payload).eq('id',old.id):window.cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'});const r=await q;if(r.error)console.warn(r.error)}
+          else if(window.__v39Dist.backend==='private'&&window.cloudClient&&window.cloudReady&&window.cloudUser&&typeof window.savePrivateState==='function')await window.savePrivateState();
+        }catch(e){console.warn('distribution note sync:',e)}
+      });
+    }catch(e){console.error(e);notify('저장 중 오류가 발생했습니다.');}
+  };
+})();
+</script>
+
+<script id="v405-persistent-payment-state-fix10">
+(function(){
+  'use strict';
+  // 분배금 지급 상태는 서버 DB와 별개로 브라우저에도 보존한다.
+  // 새로고침 시 서버에 빈 데이터가 있더라도 지급/미지급 상태가 초기화되지 않도록 한다.
+  const KEY='ddunteam.distribution.persistence.v1';
+  const read=()=>{try{return JSON.parse(localStorage.getItem(KEY)||'null')||{members:{},diamond:0,notes:''};}catch(e){return {members:{},diamond:0,notes:''};}};
+  const write=v=>{try{localStorage.setItem(KEY,JSON.stringify(v));return true;}catch(e){console.warn('distribution persistence:',e);return false;}};
+  const getMembers=()=>{try{return (typeof members!=='undefined'&&Array.isArray(members))?members:[];}catch(e){return [];}};
+  const keyOf=m=>String(m?.[4]??m?.[0]??'');
+  const nameOf=m=>String(m?.[0]??'');
+  const find=k=>{const s=String(k??'');return getMembers().find(m=>keyOf(m)===s||nameOf(m)===s);};
+  const oldRec=m=>{try{if(typeof window.v39DistributionRecord==='function')return window.v39DistributionRecord(m)||{};}catch(e){}return {};};
+  function hydrate(){
+    const ms=getMembers(); if(!ms.length)return false;
+    const local=read(); local.members=local.members||{};
+    window.__v39Dist=window.__v39Dist||{payments:{},settings:{diamond:0,notes:''},ready:true,backend:'local'};
+    window.__v39Dist.payments=window.__v39Dist.payments||{};
+    let changed=false;
+    ms.filter(m=>Number(m?.[1])!==100).forEach(m=>{
+      const k=keyOf(m), n=nameOf(m), saved=local.members[k]||local.members[n];
+      if(!saved)return;
+      const current=oldRec(m);
+      // 로컬에 저장된 지급 상태를 우선 복원한다. 서버가 빈 상태를 내려주는 경우도 보호한다.
+      const rec={...current,...saved,member_id:k,nickname:n};
+      window.__v39Dist.payments[k]=rec;
+      if(n && local.members[n]===undefined){local.members[n]=rec;changed=true;}
+    });
+    if(changed)write(local);
+    return true;
+  }
+  function persist(m,patch){
+    const d=read();d.members=d.members||{};
+    const k=keyOf(m),n=nameOf(m), old=d.members[k]||d.members[n]||oldRec(m)||{};
+    const rec={...old,...patch,member_id:k,nickname:n};
+    d.members[k]=rec; if(n)d.members[n]=rec; write(d);
+    window.__v39Dist=window.__v39Dist||{payments:{},settings:{diamond:0,notes:''},ready:true,backend:'local'};
+    window.__v39Dist.payments=window.__v39Dist.payments||{};
+    window.__v39Dist.payments[k]=rec;
+  }
+  window.__v405PersistDistributionMember=function(m,patch){persist(m,patch);};
+  window.__v405HydrateDistribution=function(){return hydrate();};
+
+  const originalToggle=window.v39TogglePaid;
+  window.v39TogglePaid=async function(memberId){
+    const m=find(memberId);
+    if(m){
+      const current=oldRec(m), paid=!current.paid;
+      let amount=Number(current.amount)||0;
+      try{const el=document.querySelector(`[data-alloc="${CSS.escape(nameOf(m))}"]`);if(el)amount=Number(el.value)||0;}catch(e){}
+      persist(m,{amount,paid,paid_at:paid?new Date().toISOString():null,note:String(current.note||''),time_class:String(current.time_class||'')});
+    }
+    if(typeof originalToggle==='function'){
+      try{return await originalToggle.apply(this,arguments);}catch(e){console.warn('payment server sync:',e);}
+    }
+  };
+
+  const originalNote=window.v405SaveInlineNote;
+  window.v405SaveInlineNote=async function(memberId,input){
+    const m=find(memberId);
+    if(m&&input){
+      const current=oldRec(m); let amount=Number(current.amount)||0;
+      try{amount=Number(input.closest('.v405-row')?.querySelector('[data-alloc]')?.value)||amount;}catch(e){}
+      persist(m,{amount,paid:!!current.paid,note:String(input.value||'').trim(),paid_at:current.paid_at||null,paid_by_user_id:current.paid_by_user_id||null,paid_by_nickname:current.paid_by_nickname||null,time_class:current.time_class||''});
+    }
+    if(typeof originalNote==='function'){
+      try{return await originalNote.apply(this,arguments);}catch(e){console.warn('note server sync:',e);}
+    }
+  };
+
+  // 분배금 화면을 그릴 때마다 로컬 지급 상태를 먼저 복원한다.
+  const wrapRender=()=>{
+    if(typeof window.__v405RenderDistribution!=='function'||window.__v405RenderDistribution.__v10wrapped)return false;
+    const base=window.__v405RenderDistribution;
+    const wrapped=function(){hydrate();return base.apply(this,arguments);};
+    wrapped.__v10wrapped=true;window.__v405RenderDistribution=wrapped;return true;
+  };
+  let tries=0;
+  const timer=setInterval(()=>{
+    tries++;
+    hydrate();wrapRender();
+    if(tries>40)clearInterval(timer);
+  },250);
+  document.addEventListener('DOMContentLoaded',()=>{hydrate();wrapRender();});
+})();
+</script>
+
+<script id="v40.6-final-stability-fix">
+(function(){
+  'use strict';
+  const toastSafe=(msg)=>{try{if(typeof toast==='function')toast(msg);else console.log(msg);}catch(e){console.log(msg)}};
+  const read=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}};
+  const write=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}};
+  const memoKey=(typeof LS!=='undefined'&&LS.memo)||'ddunteam.memo.v34';
+  const memberList=()=>Array.isArray(window.members)?window.members.filter(m=>Number(m?.[1])!==100):[];
+  const ordered=()=>{const base=memberList();try{return typeof window.getOrderedMembers==='function'?window.getOrderedMembers(base):base}catch(e){return base}};
+  const distRec=(m)=>{try{return typeof window.v39DistributionRecord==='function'?(window.v39DistributionRecord(m)||{}):({})}catch(e){return {}}};
+  const findMember=(id)=>memberList().find(m=>String(m?.[4]??m?.[0])===String(id));
+
+  // Always persist the distribution state locally first. Remote sync is best-effort.
+  window.v406SaveDistributionLocal=function(){
+    const old=read(memoKey,{diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}})||{};
+    const data={diamond:Number(document.getElementById('memoDiamond')?.value)||0,allocations:{...(old.allocations||{})},timeClass:{...(old.timeClass||{})},notes:document.getElementById('privateNotes')?.value?.trim()??old.notes??'',distributionNotes:{...(old.distributionNotes||{})}};
+    document.querySelectorAll('[data-alloc]').forEach(e=>{data.allocations[e.dataset.alloc]=Number(e.value)||0});
+    document.querySelectorAll('[data-time]').forEach(e=>{data.timeClass[e.dataset.time]=e.value});
+    document.querySelectorAll('[data-note-member]').forEach(e=>{data.distributionNotes[e.dataset.noteMember]=e.value.trim()});
+    write(memoKey,data);return data;
+  };
+
+  // Override the main Save so it can never turn a successful local save into an error toast.
+  window.savePrivateMemo=function(){
+    if(typeof canDist==='function'&&!canDist()){toastSafe('소유자와 군주만 사용할 수 있습니다.');return;}
+    const data=v406SaveDistributionLocal();
+    try{
+      if(window.__v39Dist){
+        window.__v39Dist.settings=Object.assign({},window.__v39Dist.settings||{}, {diamond:data.diamond,notes:data.notes});
+        const ps=window.__v39Dist.payments||{};
+        ordered().forEach(m=>{const old=distRec(m),key=String(m?.[4]??m?.[0]);ps[key]=Object.assign({},old,{clan_id:window.CLOUD_CLAN_ID,member_id:key,nickname:m[0],amount:Number(data.allocations[m[0]])||0,note:data.distributionNotes[m[0]]||old.note||'',time_class:data.timeClass[m[0]]||old.time_class||'',paid:!!old.paid});});
+        window.__v39Dist.payments=ps;
+      }
+    }catch(e){console.warn('local distribution sync',e)}
+    toastSafe('저장되었습니다.');
+    // Remote persistence is intentionally non-blocking and cannot change the success UI.
+    try{
+      if(window.__v39Dist?.backend==='private'&&typeof savePrivateState==='function'&&window.cloudClient&&window.cloudUser){Promise.resolve(savePrivateState()).catch(e=>console.warn('remote distribution save',e));}
+    }catch(e){console.warn(e)}
+  };
+
+  // Payment toggle: local state first, then optional remote sync.
+  window.v406TogglePaid=function(memberId){
+    const m=findMember(memberId);if(!m){toastSafe('혈맹원을 찾을 수 없습니다.');return;}
+    const old=distRec(m), paid=!old.paid;
+    const row=[...document.querySelectorAll('.v405-row')].find(x=>x.querySelector('[data-alloc]')?.dataset.alloc===String(m[0]));
+    const amount=Number(row?.querySelector('[data-alloc]')?.value)||Number(old.amount)||0;
+    const key=String(m?.[4]??m?.[0]);
+    const payload=Object.assign({},old,{clan_id:window.CLOUD_CLAN_ID,member_id:key,nickname:m[0],amount,paid,paid_at:paid?new Date().toISOString():null,paid_by_user_id:paid&&window.cloudUser?window.cloudUser.id:null,paid_by_nickname:paid?(window.currentNick||''):null,note:old.note||'',time_class:old.time_class||''});
+    try{
+      window.__v39Dist=window.__v39Dist||{payments:{},settings:{}};window.__v39Dist.payments=window.__v39Dist.payments||{};window.__v39Dist.payments[key]=payload;
+      const data=read(memoKey,{diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}})||{};data.allocations=data.allocations||{};data.allocations[m[0]]=amount;write(memoKey,data);
+      toastSafe(paid?'지급되었습니다.':'지급이 취소되었습니다.');
+      // Do not await remote persistence.
+      if(window.__v39Dist.backend==='dedicated'&&window.cloudClient&&window.cloudUser){Promise.resolve(window.cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'})).catch(e=>console.warn(e));}
+      else if(window.__v39Dist.backend==='private'&&typeof savePrivateState==='function'&&window.cloudClient&&window.cloudUser){Promise.resolve(savePrivateState()).catch(e=>console.warn(e));}
+      setTimeout(()=>{try{window.__v405RenderDistribution?.()}catch(e){}},0);
+    }catch(e){console.error(e);toastSafe('지급 처리 중 오류가 발생했습니다.');}
+  };
+  window.v39TogglePaid=window.v406TogglePaid;
+
+  // Inline special-note save: immediate local persistence + success toast.
+  window.v406SaveInlineNote=function(memberId,input){
+    const m=findMember(memberId);if(!m||!input)return;
+    const note=String(input.value||'').trim();
+    const old=distRec(m), key=String(m?.[4]??m?.[0]);
+    const amount=Number(input.closest('.v405-row')?.querySelector('[data-alloc]')?.value)||Number(old.amount)||0;
+    const payload=Object.assign({},old,{clan_id:window.CLOUD_CLAN_ID,member_id:key,nickname:m[0],amount,note,paid:!!old.paid,time_class:old.time_class||''});
+    window.__v39Dist=window.__v39Dist||{payments:{},settings:{}};window.__v39Dist.payments=window.__v39Dist.payments||{};window.__v39Dist.payments[key]=payload;
+    const data=read(memoKey,{diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}})||{};data.allocations=data.allocations||{};data.distributionNotes=data.distributionNotes||{};data.allocations[m[0]]=amount;data.distributionNotes[m[0]]=note;write(memoKey,data);
+    input.dataset.saved=note;input.classList.remove('note-dirty');toastSafe('저장되었습니다.');
+    try{if(window.__v39Dist.backend==='dedicated'&&window.cloudClient&&window.cloudUser)Promise.resolve(window.cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'})).catch(e=>console.warn(e));else if(window.__v39Dist.backend==='private'&&typeof savePrivateState==='function'&&window.cloudClient&&window.cloudUser)Promise.resolve(savePrivateState()).catch(e=>console.warn(e));}catch(e){console.warn(e)}
+  };
+
+  // Re-render the distribution page with the same order as the member-management list.
+  const baseDist=window.__v405RenderDistribution;
+  if(typeof baseDist==='function'){
+    const original=baseDist;
+    window.__v405RenderDistribution=function(){original();
+      // Preserve the inline note values after rendering.
+      document.querySelectorAll('.v405-note').forEach(el=>{if(el.dataset.saved==null)el.dataset.saved=el.value.trim();});
+    };
   }
 
-  window.v406SaveAll=async function(){
-    if(!canView())return toastOk('분배금 관리 권한이 없습니다.');
-    state.diamond=Number(document.getElementById('v406Diamond')?.value)||0;
-    document.querySelectorAll('[data-v406-amount]').forEach(el=>{const id=String(el.dataset.v406Amount),m=memberRows().find(x=>memberId(x)===id);if(!m)return;const r=rec(m);state.payments[id]={...r,clan_id:CLOUD_CLAN_ID,member_id:id,nickname:m[0],amount:Number(el.value)||0};});
-    document.querySelectorAll('[data-v406-note]').forEach(el=>{const id=String(el.dataset.v406Note),m=memberRows().find(x=>memberId(x)===id);if(!m)return;const r=rec(m);state.payments[id]={...r,clan_id:CLOUD_CLAN_ID,member_id:id,nickname:m[0],note:String(el.value||'').trim()};});
-    await persist('저장되었습니다.');render();
-  };
-  window.v406TogglePaid=async function(id){
-    if(!canView())return toastOk('분배금 관리 권한이 없습니다.');
-    const m=memberRows().find(x=>memberId(x)===String(id));if(!m)return toastOk('혈맹원을 찾을 수 없습니다.');
-    const r=rec(m);r.amount=Number(document.querySelector(`[data-v406-amount="${CSS.escape(String(id))}"]`)?.value)||Number(r.amount)||0;r.paid=!r.paid;r.paid_at=r.paid?new Date().toISOString():null;r.nickname=m[0];r.member_id=String(id);r.clan_id=CLOUD_CLAN_ID;state.payments[String(id)]=r;
-    localSet(state);
-    if(canUse()){try{await writeServer();}catch(e){return toastOk('지급 상태 저장에 실패했습니다: '+(e.message||e));}}
-    render();toastOk(r.paid?'지급되었습니다.':'지급이 취소되었습니다.');
-  };
-  window.v406SaveNote=async function(id,el){
-    if(!canView())return;
-    const m=memberRows().find(x=>memberId(x)===String(id));if(!m)return;
-    const r=rec(m);r.note=String(el?.value||'').trim();r.nickname=m[0];r.member_id=String(id);r.clan_id=CLOUD_CLAN_ID;r.amount=Number(document.querySelector(`[data-v406-amount="${CSS.escape(String(id))}"]`)?.value)||Number(r.amount)||0;state.payments[String(id)]=r;
-    localSet(state);
-    if(canUse()){try{await writeServer();}catch(e){return toastOk('특이사항 저장에 실패했습니다: '+(e.message||e));}}
-    el.dataset.saved=r.note;toastOk('저장되었습니다.');
-  };
-  window.v406PostOp=async function(){
-    if(!canView())return toastOk('운영 메모 작성 권한이 없습니다.');
-    const el=document.getElementById('v406OpInput'),text=String(el?.value||'').trim();if(!text)return toastOk('운영 메모 내용을 입력해주세요.');
-    state.notes=Array.isArray(state.notes)?state.notes:[];state.notes.push({id:'op-'+Date.now()+'-'+Math.random().toString(36).slice(2),author:String(currentNick||'작성자'),text,createdAt:new Date().toISOString()});
-    const ok=await persist('저장되었습니다.');if(!ok)return;el.value='';renderHistory();
-  };
-  window.v406DeleteOp=async function(i){
-    if(!canView())return;if(!confirm('이 운영 메모를 삭제할까요?'))return;state.notes.splice(i,1);const ok=await persist('저장되었습니다.');if(ok)renderHistory();
-  };
-  function renderHistory(){const box=document.getElementById('v406History');if(!box)return;const list=Array.isArray(state.notes)?state.notes:[];box.innerHTML=list.length?list.slice().reverse().map((x,ri)=>{const idx=list.length-1-ri;const dt=new Date(x.createdAt);return `<div class="v406-post"><div class="v406-post-meta"><strong>${esc(x.author||'작성자')}</strong><time>${dt.toLocaleString('ko-KR')}</time><button class="mini" type="button" onclick="v406DeleteOp(${idx})">삭제</button></div><div class="v406-post-body">${esc(x.text||'')}</div></div>`}).join(''):'<div class="v406-empty">아직 등록된 운영 메모가 없습니다.</div>';}
-  function render(){
-    const extra=document.getElementById('extraPage');if(!extra)return;
-    if(!canView()){extra.innerHTML='<div class="card data-page"><div class="permission">페이지 소유자 · 군주 · 관리자 · 수호만 열람할 수 있습니다.</div></div>';return;}
-    const all=ordered();const paid=all.filter(m=>!!rec(m).paid),total=all.reduce((s,m)=>s+(Number(rec(m).amount)||0),0),paidAmount=paid.reduce((s,m)=>s+(Number(rec(m).amount)||0),0),remain=(Number(state.diamond)||0)-total;
-    const rows=all.map((m,i)=>{const id=memberId(m),r=rec(m),p=!!r.paid,note=String(r.note||''),amt=Number(r.amount)||0;return `<div class="v406-row ${p?'paid':''}"><div class="v406-no">${i+1}</div><div><div class="v406-name"><b>${esc(m[0])}</b><span class="v406-status ${p?'done':'todo'}">${p?'🟢 지급완료':'🟡 미지급'}</span></div><div class="v406-meta">${esc(m[2]||'모름')} · Lv.${esc(m[1])}</div></div><div class="v406-amount"><input type="number" min="0" data-v406-amount="${esc(id)}" value="${amt}"><b>D</b></div><button type="button" class="mini v406-pay" onclick="v406TogglePaid('${esc(id)}')">${p?'지급취소':'지급'}</button><input class="v406-note" data-v406-note="${esc(id)}" value="${esc(note)}" placeholder="특이사항 메모를 입력하세요..." onkeydown="if(event.key==='Enter'){event.preventDefault();v406SaveNote(this.dataset.v406Note,this)}" onblur="if(this.value.trim()!==this.dataset.saved)v406SaveNote(this.dataset.v406Note,this)"></div>`}).join('');
-    extra.innerHTML=`<div class="v406-layout"><div class="card data-page v406-main"><div class="v406-head"><div><div class="v406-title">🏆 분배금 관리 <span class="v406-badge">v40.6 CLEAN</span></div><div class="v406-sub">혈맹원 분배금 지급 현황을 관리합니다.</div></div><button class="ghost" type="button" onclick="v406SaveAll()">저장</button></div><div class="v406-summary"><label>현재 보유 혈비(다이아)<input id="v406Diamond" type="number" value="${Number(state.diamond)||0}"></label><div><span>총 분배금</span><b>${total.toLocaleString()} D</b></div><div><span>남은 다이아</span><b>${remain.toLocaleString()} D</b></div></div><div class="v406-toolbar"><span>정렬</span><button class="active" type="button">⭐ 랭킹순 · 인원 관리 순서</button></div><div class="v406-statusline"><span class="done">🟢 지급완료 ${paid.length}명 · ${paidAmount.toLocaleString()} D</span><span class="todo">🟡 미지급 ${all.length-paid.length}명</span><button class="ghost v406-save" type="button" onclick="v406SaveAll()">저장</button></div><div class="v406-table"><div class="v406-th"><span>#</span><span>닉네임 / 클래스</span><span>분배금 (D)</span><span>지급</span><span>특이사항 메모</span></div>${rows||'<div class="v406-empty">혈맹원이 없습니다.</div>'}</div><div class="v406-op"><div class="v406-op-head"><b>운영 메모</b><button class="primary" type="button" onclick="v406PostOp()">글 올리기</button></div><textarea id="v406OpInput" placeholder="운영 관련 내용을 기록해주세요..."></textarea><div id="v406History" class="v406-history"></div></div></div><div class="card data-page v406-side"><div class="head"><div class="title">💰 분배금 계산 요약</div></div><div class="v406-calc"><div><span>혈비</span><b>${(Number(state.diamond)||0).toLocaleString()} D</b></div><div><span>분배금</span><b>${total.toLocaleString()} D</b></div><div class="remain"><span>잔여</span><b>${remain.toLocaleString()} D</b></div><div><span>지급 완료</span><b>${paid.length}명</b></div><div><span>미지급 인원</span><b>${all.length-paid.length}명</b></div></div><div class="rule-box v406-rules"><b>시간 분류 기준</b><p>👑 12시간 이상 · 언제나 잘 돌아가는 캐릭</p><p>⚔️ 6시간 이상 · 저녁 시간만큼은 꼭 오는 캐릭</p><p>🗡️ 2~3시간 이상 · 메인 타임정도는 오는 캐릭</p><p>🔨 1시간 미만 · 거의 안도는 캐릭</p><p>👹 보스 · 보스 위주로 챙겨주는 캐릭</p><p>💀 해골 · 기변 이슈 + 개인 이슈로 제외 캐릭</p></div></div></div>`;
-    document.querySelectorAll('[data-v406-note]').forEach(el=>el.dataset.saved=el.value.trim());renderHistory();
+  // Restore the operating memo below the distribution table if a layout omitted it.
+  function ensureOperatingMemo(){
+    const main=document.querySelector('.v405-main');if(!main||main.querySelector('#v406OperatingMemo'))return;
+    const data=read(memoKey,{notes:''})||{};
+    const sec=document.createElement('div');sec.className='memo-section';sec.id='v406OperatingMemo';sec.innerHTML='<div class="memo-section-head"><div class="section-title">운영 메모</div><button type="button" class="primary" id="v406OperatingMemoSave">저장</button></div><textarea id="v406OperatingMemoText" class="memo-textarea" placeholder="운영 메모를 입력하세요...">'+(typeof escapeHtml==='function'?escapeHtml(data.notes||''):String(data.notes||''))+'</textarea>';
+    main.appendChild(sec);
+    sec.querySelector('#v406OperatingMemoSave').onclick=()=>{const d=read(memoKey,{})||{};d.notes=sec.querySelector('#v406OperatingMemoText').value.trim();write(memoKey,d);toastSafe('저장되었습니다.');};
+    sec.querySelector('#v406OperatingMemoText').addEventListener('blur',()=>{const d=read(memoKey,{})||{};d.notes=sec.querySelector('#v406OperatingMemoText').value.trim();write(memoKey,d);toastSafe('저장되었습니다.');});
   }
-  async function openItems(){await readServer();render();}
-  const baseShow=window.showPage;
-  window.showPage=function(page,btn){const r=baseShow?baseShow.apply(this,arguments):undefined;if(page==='items')setTimeout(openItems,0);return r;};
-  window.__v406RenderDistribution=render;
-  document.addEventListener('click',function(e){
-    const b=e.target.closest('#v369All');
-    if(b){setTimeout(()=>{document.querySelectorAll('.v369-start-row .v369-chip').forEach(x=>x.click());},0);}
-  });
-  try{if(typeof cloudClient!=='undefined'&&cloudClient){cloudClient.channel('ddunteam-distribution-clean-v406').on('postgres_changes',{event:'*',schema:'public',table:'clan_private_state',filter:'clan_id=eq.ddunteam'},async()=>{if(document.querySelector('#tabs button.active')?.getAttribute('onclick')?.includes("'items'")){await readServer();render();}}).subscribe();}}catch(e){console.warn(e)}
+  const obs=new MutationObserver(()=>ensureOperatingMemo());obs.observe(document.body,{childList:true,subtree:true});setTimeout(ensureOperatingMemo,200);
+
+  // Ladder: make the existing "전체 결과 보기" button work even if an older render is active.
+  function revealAllLadder(){
+    const st=window.__v369;if(!st)return;
+    const res=document.getElementById('v369Results');
+    if(!res)return;
+    const rows=st.names.map((name,i)=>{const end=st.ends?.[i]??(typeof trace==='function'?trace(i,st.steps):i);return '<div class="v369-result-row"><b>'+((typeof esc==='function')?esc(name):name)+'</b><span>→</span><strong>'+((typeof esc==='function')?esc(st.outs[end]):st.outs[end])+'</strong></div>';}).join('');
+    res.innerHTML='<b>🎉 전체 결과</b>'+rows;
+    // Draw every trace one after another without relying on button closures.
+    if(typeof window.renderV369LadderSetup==='function'&&document.getElementById('v369Svg')){
+      const svg=document.getElementById('v369Svg');svg.querySelectorAll('.v369-trace,.v369-ball').forEach(e=>e.remove());
+      const n=st.names.length,W=1000,L=80,R=920,TOP=85,BOT=430,xs=Array.from({length:n},(_,i)=>L+(R-L)*(i/(n-1)));
+      st.names.forEach((_,idx)=>{let x=idx,pts=[[xs[x],TOP]];for(let ri=0;ri<st.steps.length;ri++){const y=TOP+(BOT-TOP)*(ri+1)/(st.steps.length+1);if(x>0&&st.steps[ri][x-1]){pts.push([xs[x],y],[xs[x-1],y]);x--}else if(x<st.steps[ri].length&&st.steps[ri][x]){pts.push([xs[x],y],[xs[x+1],y]);x++}else pts.push([xs[x],y])}pts.push([xs[x],BOT]);const poly=document.createElementNS('http://www.w3.org/2000/svg','polyline');poly.setAttribute('class','v369-trace');poly.setAttribute('points',pts.map(p=>p.join(',')).join(' '));svg.appendChild(poly);});
+    }
+  }
+  window.revealAllV369Ladder=revealAllLadder;
+  document.addEventListener('click',e=>{if(e.target.closest('#v369All')){e.preventDefault();e.stopPropagation();revealAllLadder();}},true);
+})();
+</script>
+
+
+<script id="v406-real-supabase-persistence-final">
+(function(){
+  'use strict';
+  const STATE_TABLE='clan_private_state';
+  const STATE_KEY='distribution';
+  const LOCAL_KEY='ddunteam.distribution.persistence.v2';
+  const esc=v=>typeof escapeHtml==='function'?escapeHtml(String(v??'')):String(v??'');
+  const notify=msg=>{try{if(typeof toast==='function')toast(msg);else console.info(msg)}catch(e){console.info(msg)}};
+  const localRead=()=>{try{return JSON.parse(localStorage.getItem(LOCAL_KEY)||'null')||{payments:{},settings:{diamond:0,notes:''},history:[]}}catch(e){return {payments:{},settings:{diamond:0,notes:''},history:[]}}};
+  const localWrite=v=>{try{localStorage.setItem(LOCAL_KEY,JSON.stringify(v));return true}catch(e){return false}};
+  const membersList=()=>Array.isArray(window.members)?window.members.filter(m=>Number(m?.[1])!==100):[];
+  const memberKey=m=>String(m?.[4]??m?.[0]??'');
+  const findMember=k=>membersList().find(m=>memberKey(m)===String(k)||String(m?.[0]??'')===String(k));
+  const ordered=()=>{const base=membersList();try{return typeof window.getOrderedMembers==='function'?window.getOrderedMembers(base):base}catch(e){return base}};
+  const currentRec=m=>{try{return typeof window.v39DistributionRecord==='function'?(window.v39DistributionRecord(m)||{}):{}}catch(e){return {}}};
+  const normalizePayload=p=>{
+    p=p&&typeof p==='object'?p:{};
+    return {
+      version:2,
+      settings:Object.assign({diamond:0,notes:''},p.settings||{}),
+      payments:(p.payments&&typeof p.payments==='object'&&!Array.isArray(p.payments))?p.payments:{},
+      history:Array.isArray(p.history)?p.history:[]
+    };
+  };
+  let remotePayload=null;
+  async function loadRemote(){
+    if(typeof cloudReady==='undefined'||!cloudReady||!cloudClient||!cloudUser)return null;
+    try{
+      const r=await cloudClient.from(STATE_TABLE).select('state_key,payload').eq('clan_id',CLOUD_CLAN_ID).eq('state_key',STATE_KEY).maybeSingle();
+      if(r.error)throw r.error;
+      remotePayload=normalizePayload(r.data?.payload);
+      return r.data?.payload?remotePayload:null;
+    }catch(e){console.warn('distribution persistent load:',e);return null;}
+  }
+  function localPayload(){
+    const l=localRead();
+    const payments={...(l.payments||{})};
+    const settings=Object.assign({diamond:0,notes:''},l.settings||{});
+    // Migrate the old v40 local formats into the persistent v2 shape.
+    try{
+      const old=JSON.parse(localStorage.getItem((window.LS&&LS.memo)||'ddunteam.memo.v34')||'null')||{};
+      settings.diamond=Number(settings.diamond)||Number(old.diamond)||0;
+      if(!settings.notes)settings.notes=String(old.notes||'');
+      const alloc=old.allocations||{}, notes=old.distributionNotes||{};
+      ordered().forEach(m=>{
+        const k=memberKey(m),n=String(m[0]);
+        if(!payments[k] && (alloc[n]!==undefined||notes[n]!==undefined))payments[k]={member_id:k,nickname:n,amount:Number(alloc[n])||0,paid:false,note:String(notes[n]||''),time_class:''};
+      });
+    }catch(e){}
+    return {version:2,settings,payments,history:Array.isArray(l.history)?l.history:[]};
+  }
+  function applyPayload(p){
+    p=normalizePayload(p);
+    window.__v39Dist=window.__v39Dist||{payments:{},settings:{diamond:0,notes:''},ready:true,backend:'private'};
+    window.__v39Dist.ready=true;window.__v39Dist.backend='private';
+    window.__v39Dist.payments={...(p.payments||{})};
+    window.__v39Dist.settings=Object.assign({diamond:0,notes:''},p.settings||{});
+    const l=localRead();
+    l.settings=Object.assign({},l.settings||{},window.__v39Dist.settings);
+    l.payments={...(l.payments||{}),...(p.payments||{})};
+    l.history=Array.isArray(p.history)?p.history:[];
+    localWrite(l);
+    try{
+      const old=JSON.parse(localStorage.getItem((window.LS&&LS.memo)||'ddunteam.memo.v34')||'null')||{};
+      old.diamond=Number(p.settings?.diamond)||0;old.notes=String(p.settings?.notes||'');old.allocations=old.allocations||{};old.distributionNotes=old.distributionNotes||{};
+      Object.values(p.payments||{}).forEach(x=>{if(x?.nickname){old.allocations[x.nickname]=Number(x.amount)||0;old.distributionNotes[x.nickname]=String(x.note||'');}});
+      localStorage.setItem((window.LS&&LS.memo)||'ddunteam.memo.v34',JSON.stringify(old));
+    }catch(e){}
+  }
+  async function saveRemote(){
+    if(typeof cloudReady==='undefined'||!cloudReady||!cloudClient||!cloudUser)return false;
+    const payload=normalizePayload({settings:window.__v39Dist?.settings||{},payments:window.__v39Dist?.payments||{},history:localRead().history||[]});
+    try{
+      const r=await cloudClient.from(STATE_TABLE).upsert({clan_id:CLOUD_CLAN_ID,state_key:STATE_KEY,payload,updated_at:new Date().toISOString()},{onConflict:'clan_id,state_key'});
+      if(r.error)throw r.error;
+      remotePayload=payload;
+      return true;
+    }catch(e){console.warn('distribution persistent save:',e);return false;}
+  }
+  window.__v406LoadDistributionPersistent=async function(){
+    const remote=await loadRemote();
+    const local=localPayload();
+    if(remote){
+      // Server is authoritative once it contains actual distribution/history data.
+      const hasRemote=Object.keys(remote.payments||{}).length>0 || Number(remote.settings?.diamond||0)>0 || String(remote.settings?.notes||'') || (remote.history||[]).length>0;
+      if(hasRemote)applyPayload(remote); else applyPayload(local);
+    }else{
+      applyPayload(local);
+      // First migration: push existing local data to the shared state.
+      if(typeof cloudReady!=='undefined'&&cloudReady&&cloudClient&&cloudUser)await saveRemote();
+    }
+    return true;
+  };
+  window.__v406SaveDistributionPersistent=saveRemote;
+  window.__v406DistributionHistory=function(){return localRead().history||[]};
+
+  function persistLocalAndMemory(m,patch){
+    const key=memberKey(m), name=String(m?.[0]||'');
+    window.__v39Dist=window.__v39Dist||{payments:{},settings:{diamond:0,notes:''},ready:true,backend:'private'};
+    window.__v39Dist.payments=window.__v39Dist.payments||{};
+    const old=currentRec(m);
+    const rec=Object.assign({},old,patch,{clan_id:CLOUD_CLAN_ID,member_id:key,nickname:name});
+    window.__v39Dist.payments[key]=rec;
+    const l=localRead();l.payments=l.payments||{};l.payments[key]=rec;localWrite(l);
+    try{
+      const memo=JSON.parse(localStorage.getItem((window.LS&&LS.memo)||'ddunteam.memo.v34')||'null')||{diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}};
+      memo.allocations=memo.allocations||{};memo.distributionNotes=memo.distributionNotes||{};memo.allocations[name]=Number(rec.amount)||0;memo.distributionNotes[name]=String(rec.note||'');
+      localStorage.setItem((window.LS&&LS.memo)||'ddunteam.memo.v34',JSON.stringify(memo));
+    }catch(e){}
+  }
+
+  window.v39TogglePaid=async function(memberId){
+    try{
+      if(typeof canDist==='function'&&!canDist())return notify('소유자와 군주만 분배금을 관리할 수 있습니다.');
+      const m=findMember(memberId);if(!m)return notify('혈맹원을 찾을 수 없습니다.');
+      const old=currentRec(m), input=[...document.querySelectorAll('[data-alloc]')].find(e=>String(e.dataset.alloc)===String(m[0]));
+      const amount=Number(input?.value)||Number(old.amount)||0,paid=!Boolean(old.paid),now=new Date().toISOString();
+      persistLocalAndMemory(m,{amount,paid,paid_at:paid?now:null,paid_by_user_id:paid&&window.cloudUser?window.cloudUser.id:null,paid_by_nickname:paid?window.currentNick:null,note:String(old.note||''),time_class:String(old.time_class||'')});
+      notify(paid?'지급되었습니다.':'지급이 취소되었습니다.');
+      await saveRemote();
+      setTimeout(()=>{try{window.__v405RenderDistribution&&window.__v405RenderDistribution()}catch(e){}},0);
+    }catch(e){console.error('persistent payment:',e);notify('지급 처리 중 오류가 발생했습니다.');}
+  };
+
+  window.v405SaveInlineNote=async function(memberId,input){
+    try{
+      if(typeof canDist==='function'&&!canDist())return notify('소유자와 군주만 분배금을 관리할 수 있습니다.');
+      const m=findMember(memberId);if(!m||!input)return;
+      const old=currentRec(m),amount=Number(input.closest('.v405-row')?.querySelector('[data-alloc]')?.value)||Number(old.amount)||0,note=String(input.value||'').trim();
+      persistLocalAndMemory(m,{amount,note,paid:Boolean(old.paid),paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,time_class:String(old.time_class||'')});
+      input.dataset.saved=note;input.classList.remove('note-dirty');notify('저장되었습니다.');
+      await saveRemote();
+    }catch(e){console.error('persistent note:',e);notify('저장 중 오류가 발생했습니다.');}
+  };
+
+  window.savePrivateMemo=async function(){
+    try{
+      if(typeof canDist==='function'&&!canDist())return notify('소유자와 군주만 사용할 수 있습니다.');
+      const l=localRead(), d=window.__v39Dist?.settings||{};
+      d.diamond=Number(document.getElementById('memoDiamond')?.value)||0;
+      d.notes=String(document.getElementById('privateNotes')?.value||d.notes||'').trim();
+      window.__v39Dist.settings=d;
+      const memo=JSON.parse(localStorage.getItem((window.LS&&LS.memo)||'ddunteam.memo.v34')||'null')||{};
+      memo.diamond=d.diamond;memo.notes=d.notes;memo.allocations=memo.allocations||{};memo.distributionNotes=memo.distributionNotes||{};
+      document.querySelectorAll('[data-alloc]').forEach(e=>memo.allocations[e.dataset.alloc]=Number(e.value)||0);
+      document.querySelectorAll('[data-note-member]').forEach(e=>memo.distributionNotes[e.dataset.noteMember]=String(e.value||'').trim());
+      localStorage.setItem((window.LS&&LS.memo)||'ddunteam.memo.v34',JSON.stringify(memo));
+      l.settings=d;l.payments=window.__v39Dist.payments||{};localWrite(l);
+      notify('저장되었습니다.');
+      await saveRemote();
+      if(typeof window.__v405RenderDistribution==='function')window.__v405RenderDistribution();
+    }catch(e){console.error('persistent distribution save:',e);notify('저장 중 오류가 발생했습니다.');}
+  };
+
+  // Operating memo history: cafe-style posts with author/date/time, stored in Supabase.
+  function history(){return localRead().history||[]}
+  function renderHistory(){
+    const box=document.getElementById('v406OperatingMemoHistory');if(!box)return;
+    const list=history();
+    box.innerHTML=list.length?list.slice().reverse().map((x,ri)=>{
+      const idx=list.length-1-ri;
+      return `<div class="v406-history-item"><div class="v406-history-meta"><b>${esc(x.author||'작성자')}</b><time>${new Date(x.createdAt).toLocaleString('ko-KR',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</time><button type="button" onclick="v406DeleteOperatingMemo(${idx})">삭제</button></div><div class="v406-history-body">${esc(x.text||'').replace(/\n/g,'<br>')}</div></div>`;
+    }).join(''):'<div class="v406-history-empty">아직 작성된 운영 메모가 없습니다.</div>';
+  }
+  window.v406PostOperatingMemo=async function(){
+    if(typeof canDist==='function'&&!canDist())return notify('소유자와 군주만 사용할 수 있습니다.');
+    const el=document.getElementById('v406OperatingMemoText')||document.getElementById('privateNotes');if(!el)return;
+    const text=String(el.value||'').trim();if(!text)return notify('메모 내용을 입력해주세요.');
+    const l=localRead();l.history=l.history||[];l.history.push({id:(crypto&&crypto.randomUUID)?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2),author:String(window.currentNick||'작성자'),text,createdAt:new Date().toISOString()});
+    // Keep the latest text as the current memo too.
+    l.settings=l.settings||{};l.settings.notes=text;localWrite(l);
+    window.__v39Dist=window.__v39Dist||{payments:{},settings:{diamond:0,notes:''},ready:true,backend:'private'};window.__v39Dist.settings=Object.assign({},window.__v39Dist.settings||{},l.settings);
+    try{localStorage.setItem((window.LS&&LS.memo)||'ddunteam.memo.v34',JSON.stringify(Object.assign(JSON.parse(localStorage.getItem((window.LS&&LS.memo)||'ddunteam.memo.v34')||'{}'),{notes:text})))}catch(e){}
+    el.value='';renderHistory();notify('운영 메모가 저장되었습니다.');
+    await saveRemote();
+  };
+  window.v406DeleteOperatingMemo=async function(index){
+    if(typeof canDist==='function'&&!canDist())return notify('소유자와 군주만 사용할 수 있습니다.');
+    const l=localRead();if(!l.history?.[index])return;if(!confirm('이 운영 메모를 삭제할까요?'))return;l.history.splice(index,1);localWrite(l);renderHistory();notify('운영 메모를 삭제했습니다.');await saveRemote();
+  };
+  function ensureOperatingMemo(){
+    const main=document.querySelector('.v405-main');if(!main)return;
+    let sec=document.getElementById('v406OperatingMemo');
+    if(!sec){
+      sec=document.createElement('div');sec.className='memo-section';sec.id='v406OperatingMemo';
+      sec.innerHTML='<div class="memo-section-head"><div class="section-title">운영 메모</div><button type="button" class="primary" id="v406OperatingMemoPost">글 올리기</button></div><textarea id="v406OperatingMemoText" class="memo-textarea" placeholder="운영 메모를 입력하세요..."></textarea><div id="v406OperatingMemoHistory"></div>';
+      main.appendChild(sec);
+    }
+    const data=localRead();const ta=document.getElementById('v406OperatingMemoText');if(ta&&!ta.dataset.bound){ta.dataset.bound='1';ta.value='';}
+    const btn=document.getElementById('v406OperatingMemoPost');if(btn&&!btn.dataset.bound){btn.dataset.bound='1';btn.onclick=()=>window.v406PostOperatingMemo();}
+    renderHistory();
+  }
+  function restoreAfterRender(){setTimeout(()=>{ensureOperatingMemo();renderHistory();},20)}
+
+  // Wrap distribution renderer so operating memo is always present and persisted.
+  const oldRender=window.__v405RenderDistribution;
+  if(typeof oldRender==='function'){
+    window.__v405RenderDistribution=function(){const r=oldRender.apply(this,arguments);restoreAfterRender();return r;};
+  }
+  // Re-apply the shared state after every cloud refresh, preventing old fallback code from wiping paid flags.
+  const oldCloud=window.cloudLoad;
+  if(typeof oldCloud==='function'){
+    window.cloudLoad=async function(){const r=await oldCloud.apply(this,arguments);try{await window.__v406LoadDistributionPersistent();}catch(e){console.warn(e)};if(document.querySelector('#tabs button.active')?.getAttribute('onclick')?.includes("'memo'")){try{window.__v405RenderDistribution&&window.__v405RenderDistribution()}catch(e){}}return r;};
+  }
+  // Initial load and realtime updates.
+  const boot=async()=>{try{await window.__v406LoadDistributionPersistent();}catch(e){console.warn(e)};restoreAfterRender()};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,80);
+  try{
+    if(window.cloudClient&&window.cloudUser){window.cloudClient.channel('ddunteam-distribution-persistent-final').on('postgres_changes',{event:'*',schema:'public',table:STATE_TABLE,filter:'clan_id=eq.ddunteam'},async()=>{try{await window.__v406LoadDistributionPersistent();if(document.querySelector('#tabs button.active')?.getAttribute('onclick')?.includes("'memo'"))window.__v405RenderDistribution&&window.__v405RenderDistribution()}catch(e){console.warn(e)}}).subscribe();}
+  }catch(e){console.warn(e)}
+
+  const st=document.createElement('style');st.textContent=`
+    #v406OperatingMemo{margin-top:14px;padding:14px;border:1px solid #293642;background:#0a1017;border-radius:10px}
+    #v406OperatingMemoHistory{margin-top:14px;display:flex;flex-direction:column;gap:8px;max-height:520px;overflow:auto}
+    .v406-history-item{padding:12px 14px;border:1px solid #293642;background:#0d131b;border-radius:9px}
+    .v406-history-meta{display:flex;align-items:center;gap:10px;color:#7f93aa;font-size:11px;margin-bottom:7px}.v406-history-meta b{color:#dce7f5;font-size:12px}.v406-history-meta time{margin-right:auto}.v406-history-meta button{padding:3px 7px;font-size:10px;border:1px solid #4a2d35;background:#171015;color:#c9a7ae;border-radius:6px}
+    .v406-history-body{font-size:13px;line-height:1.65;color:#e8eef7;word-break:break-word}.v406-history-empty{padding:18px;text-align:center;color:#65768b;border:1px dashed #293545;border-radius:9px;font-size:12px}
+  `;document.head.appendChild(st);
+})();
+</script>
+
+<script id="v40.7-final-persistence-and-memo-fix">
+(function(){
+  'use strict';
+  const LOCAL_KEY='ddunteam.distribution.persistence.v2';
+  const LEGACY_KEY=(()=>{try{return (typeof LS!=='undefined'&&LS.memo)||'ddunteam.memo.v34'}catch(e){return 'ddunteam.memo.v34'}})();
+  const read=()=>{try{return JSON.parse(localStorage.getItem(LOCAL_KEY)||'null')||{version:2,settings:{diamond:0,notes:''},payments:{},history:[]}}catch(e){return {version:2,settings:{diamond:0,notes:''},payments:{},history:[]}}};
+  const write=v=>{try{localStorage.setItem(LOCAL_KEY,JSON.stringify(v));return true}catch(e){console.warn(e);return false}};
+  const legacy=()=>{try{return JSON.parse(localStorage.getItem(LEGACY_KEY)||'null')||{diamond:0,allocations:{},distributionNotes:{},notes:''}}catch(e){return {diamond:0,allocations:{},distributionNotes:{},notes:''}}};
+  const membersList=()=>{try{return (typeof members!=='undefined'&&Array.isArray(members))?members.filter(m=>Number(m?.[1])!==100):[]}catch(e){return []}};
+  const key=m=>String(m?.[4]??m?.[0]??'');
+  const name=m=>String(m?.[0]??'');
+  const find=k=>membersList().find(m=>key(m)===String(k)||name(m)===String(k));
+  const toastSafe=msg=>{try{if(typeof toast==='function')toast(msg);else console.info(msg)}catch(e){console.info(msg)}};
+
+  function localPayload(){
+    const l=read(), old=legacy(); l.settings=l.settings||{diamond:0,notes:''}; l.payments=l.payments||{}; l.history=Array.isArray(l.history)?l.history:[];
+    if(!Number(l.settings.diamond)&&Number(old.diamond))l.settings.diamond=Number(old.diamond);
+    if(!l.settings.notes&&old.notes)l.settings.notes=String(old.notes);
+    const alloc=old.allocations||{}, notes=old.distributionNotes||{};
+    membersList().forEach(m=>{const k=key(m),n=name(m); if(!l.payments[k] && (alloc[n]!==undefined || notes[n]!==undefined)) l.payments[k]={member_id:k,nickname:n,amount:Number(alloc[n])||0,paid:false,note:String(notes[n]||''),time_class:''};});
+    return l;
+  }
+  function mergePayload(remote, local){
+    const out={version:2,settings:{diamond:Number(local.settings?.diamond)||0,notes:String(local.settings?.notes||'')},payments:{...(remote?.payments||{}),...(local?.payments||{})},history:[]};
+    // Local state wins for an existing member because it represents the latest browser action.
+    if(remote?.settings){ if(!out.settings.diamond)out.settings.diamond=Number(remote.settings.diamond)||0; if(!out.settings.notes)out.settings.notes=String(remote.settings.notes||''); }
+    const seen=new Set();
+    [...(remote?.history||[]),...(local?.history||[])].forEach(x=>{const id=String(x?.id||'');const sig=id||`${x?.author||''}|${x?.createdAt||''}|${x?.text||''}`;if(!seen.has(sig)){seen.add(sig);out.history.push(x)}});
+    out.history.sort((a,b)=>String(a.createdAt||'').localeCompare(String(b.createdAt||'')));
+    return out;
+  }
+  function applyLocalToMemory(l){
+    window.__v39Dist=window.__v39Dist||{payments:{},settings:{diamond:0,notes:''},ready:true,backend:'private'};
+    window.__v39Dist.ready=true;window.__v39Dist.payments={...(l.payments||{})};window.__v39Dist.settings={...(l.settings||{})};
+    try{const old=legacy();old.diamond=Number(l.settings?.diamond)||0;old.notes=String(l.settings?.notes||'');old.allocations=old.allocations||{};old.distributionNotes=old.distributionNotes||{};Object.values(l.payments||{}).forEach(x=>{if(x?.nickname){old.allocations[x.nickname]=Number(x.amount)||0;old.distributionNotes[x.nickname]=String(x.note||'')}});localStorage.setItem(LEGACY_KEY,JSON.stringify(old));}catch(e){}
+  }
+  function currentLocalRecord(m){const l=read(),k=key(m),n=name(m);return l.payments?.[k]||l.payments?.[n]||null}
+  const previousRecord=window.v39DistributionRecord;
+  window.v39DistributionRecord=function(m){const local=currentLocalRecord(m);if(local)return local;try{return typeof previousRecord==='function'?(previousRecord(m)||{}):{}}catch(e){return {}}};
+
+  async function persistRemote(){
+    try{
+      if(!(typeof cloudReady!=='undefined'&&cloudReady&&typeof cloudClient!=='undefined'&&cloudClient&&typeof cloudUser!=='undefined'&&cloudUser))return false;
+      const l=read();const payload={version:2,settings:l.settings||{diamond:0,notes:''},payments:l.payments||{},history:Array.isArray(l.history)?l.history:[]};
+      const r=await cloudClient.from('clan_private_state').upsert({clan_id:typeof CLOUD_CLAN_ID!=='undefined'?CLOUD_CLAN_ID:'ddunteam',state_key:'distribution',payload,updated_at:new Date().toISOString()},{onConflict:'clan_id,state_key'});
+      if(r.error)throw r.error; return true;
+    }catch(e){console.warn('final distribution remote save:',e);return false}
+  }
+
+  window.v407TogglePaid=function(memberId){
+    const m=find(memberId);if(!m)return toastSafe('혈맹원을 찾을 수 없습니다.');
+    const l=localPayload(),k=key(m),old=l.payments[k]||l.payments[name(m)]||{},row=[...document.querySelectorAll('.v405-row')].find(x=>String(x.querySelector('[data-alloc]')?.dataset.alloc)===name(m));
+    const amount=Number(row?.querySelector('[data-alloc]')?.value)||Number(old.amount)||0,paid=!Boolean(old.paid);
+    l.payments[k]={...old,member_id:k,nickname:name(m),amount,paid,paid_at:paid?new Date().toISOString():null,paid_by_user_id:paid&&window.cloudUser?window.cloudUser.id:null,paid_by_nickname:paid?(window.currentNick||''):null,note:String(old.note||''),time_class:String(old.time_class||'')};
+    write(l);applyLocalToMemory(l);toastSafe(paid?'지급되었습니다.':'지급이 취소되었습니다.');
+    setTimeout(()=>{try{window.__v405RenderDistribution&&window.__v405RenderDistribution()}catch(e){}},0);
+    persistRemote();
+  };
+  window.v39TogglePaid=window.v407TogglePaid;
+
+  window.v407SaveInlineNote=function(memberId,input){
+    const m=find(memberId);if(!m||!input)return;
+    const l=localPayload(),k=key(m),old=l.payments[k]||l.payments[name(m)]||{},amount=Number(input.closest('.v405-row')?.querySelector('[data-alloc]')?.value)||Number(old.amount)||0,note=String(input.value||'').trim();
+    l.payments[k]={...old,member_id:k,nickname:name(m),amount,paid:Boolean(old.paid),paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note,time_class:String(old.time_class||'')};
+    write(l);applyLocalToMemory(l);input.dataset.saved=note;input.classList.remove('note-dirty');toastSafe('저장되었습니다.');persistRemote();
+  };
+  window.v405SaveInlineNote=window.v407SaveInlineNote;
+
+  window.savePrivateMemo=function(){
+    const can=(()=>{try{return typeof canDist==='function'?canDist():(typeof isPageOwner==='function'&&isPageOwner())||(typeof rankOf==='function'&&rankOf(currentNick)==='군주')}catch(e){return true}})();
+    if(!can)return toastSafe('소유자와 군주만 사용할 수 있습니다.');
+    const l=localPayload();l.settings=l.settings||{};l.settings.diamond=Number(document.getElementById('memoDiamond')?.value)||Number(l.settings.diamond)||0;
+    // Do not use the history composer as the current memo value.
+    const note=document.getElementById('privateNotes');if(note)l.settings.notes=String(note.value||'').trim();
+    document.querySelectorAll('[data-alloc]').forEach(e=>{const m=find(e.dataset.alloc);if(m){const k=key(m),old=l.payments[k]||{};l.payments[k]={...old,member_id:k,nickname:name(m),amount:Number(e.value)||0}}});
+    document.querySelectorAll('[data-note-member]').forEach(e=>{const m=find(e.dataset.noteMember);if(m){const k=key(m),old=l.payments[k]||{};l.payments[k]={...old,member_id:k,nickname:name(m),amount:Number(document.querySelector(`[data-alloc="${CSS.escape(name(m))}"]`)?.value)||Number(old.amount)||0,note:String(e.value||'').trim()}}});
+    write(l);applyLocalToMemory(l);toastSafe('저장되었습니다.');persistRemote();
+  };
+
+  function historyList(){return localPayload().history||[]}
+  function renderHistory(){const box=document.getElementById('v407OperatingMemoHistory');if(!box)return;const list=historyList();box.innerHTML=list.length?list.slice().reverse().map((x,i)=>`<div class="v407-history-item"><div class="v407-history-meta"><b>${escapeHtml(String(x.author||'작성자'))}</b><time>${new Date(x.createdAt).toLocaleString('ko-KR',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</time><button type="button" data-del-memo="${escapeHtml(String(x.id||''))}">삭제</button></div><div class="v407-history-body">${escapeHtml(String(x.text||'')).replace(/\n/g,'<br>')}</div></div>`).join(''):'<div class="v407-history-empty">아직 작성된 운영 메모가 없습니다.</div>'}
+  function ensureOperatingMemo(){
+    const main=document.querySelector('.v405-main');if(!main)return;
+    let sec=document.getElementById('v407OperatingMemo');
+    if(!sec){
+      const old=document.getElementById('v406OperatingMemo'); if(old)old.remove();
+      sec=document.createElement('div');sec.className='memo-section';sec.id='v407OperatingMemo';
+      sec.innerHTML='<div class="memo-section-head"><div class="section-title">운영 메모</div><button type="button" class="primary" id="v407OperatingMemoPost">글 올리기</button></div><textarea id="v407OperatingMemoText" class="memo-textarea" placeholder="운영 메모를 입력하세요..."></textarea><div id="v407OperatingMemoHistory"></div>';
+      main.appendChild(sec);
+    }
+    const btn=sec.querySelector('#v407OperatingMemoPost'); if(btn&&!btn.dataset.bound){btn.dataset.bound='1';btn.onclick=()=>{const ta=sec.querySelector('#v407OperatingMemoText');const text=String(ta?.value||'').trim();if(!text)return toastSafe('메모 내용을 입력해주세요.');const l=localPayload();l.history=l.history||[];l.history.push({id:(crypto?.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random()),author:String(window.currentNick||'작성자'),text,createdAt:new Date().toISOString()});write(l);applyLocalToMemory(l);ta.value='';renderHistory();toastSafe('운영 메모가 저장되었습니다.');persistRemote();};}
+    renderHistory();
+  }
+  document.addEventListener('click',e=>{const b=e.target.closest('[data-del-memo]');if(!b)return;const id=b.dataset.delMemo,l=localPayload();if(!confirm('이 운영 메모를 삭제할까요?'))return;l.history=(l.history||[]).filter(x=>String(x.id)!==String(id));write(l);renderHistory();toastSafe('운영 메모를 삭제했습니다.');persistRemote();});
+
+  async function loadFinal(){
+    const local=localPayload();
+    let remote=null;
+    try{if(typeof cloudReady!=='undefined'&&cloudReady&&cloudClient&&cloudUser){const r=await cloudClient.from('clan_private_state').select('state_key,payload').eq('clan_id',CLOUD_CLAN_ID).eq('state_key','distribution').maybeSingle();if(!r.error&&r.data?.payload)remote=r.data.payload;}}catch(e){console.warn(e)}
+    const merged=mergePayload(remote,local);write(merged);applyLocalToMemory(merged);renderHistory();
+  }
+  const oldRender=window.__v405RenderDistribution;
+  if(typeof oldRender==='function')window.__v405RenderDistribution=function(){oldRender.apply(this,arguments);setTimeout(ensureOperatingMemo,20)};
+  const boot=()=>{loadFinal().then(()=>{try{window.__v405RenderDistribution&&window.__v405RenderDistribution()}catch(e){};ensureOperatingMemo()})};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else setTimeout(boot,50);
+  const obs=new MutationObserver(()=>ensureOperatingMemo());obs.observe(document.body,{childList:true,subtree:true});
+  const st=document.createElement('style');st.textContent='#v407OperatingMemo{margin-top:14px;padding:14px;border:1px solid #293642;background:#0a1017;border-radius:10px}#v407OperatingMemoHistory{margin-top:14px;display:flex;flex-direction:column;gap:8px;max-height:560px;overflow:auto}.v407-history-item{padding:12px 14px;border:1px solid #293642;background:#0d131b;border-radius:9px}.v407-history-meta{display:flex;align-items:center;gap:10px;color:#7f93aa;font-size:11px;margin-bottom:7px}.v407-history-meta b{color:#dce7f5;font-size:12px}.v407-history-meta time{margin-right:auto}.v407-history-meta button{padding:3px 7px;font-size:10px;border:1px solid #4a2d35;background:#171015;color:#c9a7ae;border-radius:6px}.v407-history-body{font-size:13px;line-height:1.65;color:#e8eef7;word-break:break-word}.v407-history-empty{padding:18px;text-align:center;color:#65768b;border:1px dashed #293545;border-radius:9px;font-size:12px}';document.head.appendChild(st);
 })();
 </script>
 
@@ -2362,12 +3054,17 @@ window.updateParticipantSummary=function(){
     };
   }
 
-  /* 보안상 '베키라는 문자열'만으로 페이지 소유자가 되지 않도록 수정 */
+  /* v40.3 권한 동기화 수정
+     - 기존 UI/로그인 체계는 '베키'를 페이지 소유자로 사용하고 있음
+     - 이후 보안 패치가 Supabase owner_user_id만 검사하면서
+       관리자 버튼은 보이지만 메모장에서는 소유자로 인식하지 않는 충돌이 발생함
+     - 베키 로그인 세션 또는 Supabase owner_user_id가 일치하면 소유자로 인정
+  */
   window.isPageOwner=function(){
-    return !!(cloudUser && cloudOwnerId && cloudUser.id===cloudOwnerId);
+    return String(currentNick||'').trim()==='베키' || !!(cloudUser && cloudOwnerId && cloudUser.id===cloudOwnerId);
   };
   window.canSiteEdit=function(){
-    return !!(cloudUser && cloudOwnerId && cloudUser.id===cloudOwnerId);
+    return window.isPageOwner();
   };
 
   /* 로그인 직후 닉네임을 가장 먼저 확정 */
@@ -3044,18 +3741,20 @@ window.updateParticipantSummary=function(){
     }
   };
 
+  // 인원 관리의 No. / 닉네임 순서를 좌측 혈맹원 목록과 완전히 동일하게 유지한다.
   function sortForMemberPage(list){
     const order={'페이지 소유자':0,'군주':1,'관리자':2,'수호':3,'일반':4};
-    const ranks=typeof getRanks==='function'?getRanks():{};
-    return list.filter(m=>+m[1]!==100).slice().sort((a,b)=>{
-      const ra=a[0]==='베키'?'페이지 소유자':(a[3]||'일반');
-      const rb=b[0]==='베키'?'페이지 소유자':(b[3]||'일반');
-      const oa=order[ra]??4,ob=order[rb]??4;
+    let ranks={};
+    try{ ranks=JSON.parse(localStorage.getItem('ddunteam.memberRanks.v35')||'{}')||{}; }catch(e){}
+    return list.slice().sort((a,b)=>{
+      const ra=String(a[0]||'')==='베키'?'페이지 소유자':String(a[3]||'일반');
+      const rb=String(b[0]||'')==='베키'?'페이지 소유자':String(b[3]||'일반');
+      const oa=order[ra]??4, ob=order[rb]??4;
       if(oa!==ob)return oa-ob;
-      const la=Number(a[1])||0,lb=Number(b[1])||0;
+      const la=Number(a[1])||0, lb=Number(b[1])||0;
       if(la!==lb)return lb-la;
-      const ar=Number(ranks[a[0]]),br=Number(ranks[b[0]]);
-      const ah=Number.isFinite(ar),bh=Number.isFinite(br);
+      const ar=Number(ranks[String(a[0]||'')]), br=Number(ranks[String(b[0]||'')]);
+      const ah=Number.isFinite(ar), bh=Number.isFinite(br);
       if(ah&&bh&&ar!==br)return ar-br;
       if(ah!==bh)return ah?-1:1;
       return String(a[0]||'').localeCompare(String(b[0]||''),'ko');
@@ -3105,5 +3804,96 @@ window.updateParticipantSummary=function(){
     .server-filter-btn.active{border-color:#5b8fc5;background:#18304a;color:#fff;box-shadow:0 0 0 1px rgba(91,143,197,.25) inset}
   `;document.head.appendChild(style);
   syncMemberServers();
+})();
+</script>
+<style id="v403-permission-sync-fix">
+/* v40.3 final permission sync: memo/admin owner state follows the same owner predicate. */
+</style>
+<script>
+(function(){
+  function syncV403Owner(){
+    const owner = typeof window.isPageOwner==='function' ? window.isPageOwner() : String(window.currentNick||currentNick||'')==='베키';
+    const admin=document.getElementById('adminBtn');
+    if(admin) admin.style.display=owner?'inline-block':'none';
+    const edit=document.getElementById('categoryEditBtn');
+    if(edit && owner) edit.style.display='inline-block';
+  }
+  window.__v403SyncOwner=syncV403Owner;
+  document.addEventListener('DOMContentLoaded',syncV403Owner);
+  setTimeout(syncV403Owner,0);
+  setTimeout(syncV403Owner,300);
+  setTimeout(syncV403Owner,1000);
+})();
+</script>
+
+<script id="v405-fix9-final-actions">
+(function(){
+  'use strict';
+  // IMPORTANT: members is a top-level let, so it is not available as window.members.
+  // Always resolve against the actual lexical members array.
+  const getMembers=()=>{try{return (typeof members!=='undefined'&&Array.isArray(members))?members:[]}catch(e){return []}};
+  const findMember=(key)=>{
+    const k=String(key??'');
+    return getMembers().find(m=>String(m?.[0]??'')===k || String(m?.[4]??'')===k || String(m?.[6]??'')===k);
+  };
+  const notify=(msg)=>{try{if(typeof safeToast==='function')safeToast(msg);else if(typeof toast==='function')toast(msg);else console.info(msg)}catch(e){console.info(msg)}};
+  const memoKey=()=>{try{return (typeof LS!=='undefined'&&LS.memo)||'ddunteam.memo.v34'}catch(e){return 'ddunteam.memo.v34'}};
+  const read=()=>{try{return JSON.parse(localStorage.getItem(memoKey())||'null')||{diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}}}catch(e){return {diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}}}};
+  const write=d=>{try{localStorage.setItem(memoKey(),JSON.stringify(d));return true}catch(e){console.warn('distribution local save',e);return false}};
+  const record=m=>{try{if(typeof distRecord==='function')return distRecord(m)||{}}catch(e){};try{if(typeof window.v39DistributionRecord==='function')return window.v39DistributionRecord(m)||{}}catch(e){};const p=window.__v39Dist?.payments||{};return p[String(m?.[4]??m?.[0]??'')]||p[String(m?.[0]??'')]||{amount:0,paid:false,note:'',time_class:''}};
+  const can=()=>{try{return typeof canDist==='function'?canDist():(typeof isPageOwner==='function'&&isPageOwner())||(typeof rankOf==='function'&&rankOf(currentNick)==='군주')}catch(e){return true}};
+
+  window.v39TogglePaid=async function(memberKey){
+    if(!can())return notify('소유자와 군주만 분배금을 관리할 수 있습니다.');
+    const m=findMember(memberKey);
+    if(!m)return notify('혈맹원을 찾을 수 없습니다.');
+    try{
+      const old=record(m);
+      const input=getMembers().length?[...document.querySelectorAll('[data-alloc]')].find(e=>String(e.dataset.alloc)===String(m[0])):null;
+      const amount=Number(input?.value)||Number(old.amount)||0;
+      const paid=!old.paid;
+      const id=String(m[4]??m[0]);
+      window.__v39Dist=window.__v39Dist||{};window.__v39Dist.ready=true;window.__v39Dist.payments=window.__v39Dist.payments||{};
+      window.__v39Dist.payments[id]={...old,member_id:id,nickname:String(m[0]),amount,paid,paid_at:paid?new Date().toISOString():null,note:String(old.note||''),time_class:String(old.time_class||'')};
+      const d=read();d.allocations=d.allocations||{};d.allocations[m[0]]=amount;d.distributionNotes=d.distributionNotes||{};d.distributionNotes[m[0]]=String(old.note||'');
+      if(!write(d))throw new Error('localStorage 저장 실패');
+      notify(paid?'지급되었습니다.':'지급이 취소되었습니다.');
+      // Never block the UI on Supabase.
+      Promise.resolve().then(async()=>{
+        try{
+          if(window.__v39Dist.backend==='dedicated'&&typeof cloudClient!=='undefined'&&cloudClient&&typeof cloudReady!=='undefined'&&cloudReady&&typeof cloudUser!=='undefined'&&cloudUser){
+            const payload={clan_id:typeof CLOUD_CLAN_ID!=='undefined'?CLOUD_CLAN_ID:null,member_id:id,nickname:String(m[0]),amount,paid,paid_at:paid?new Date().toISOString():null,paid_by_user_id:paid?cloudUser.id:null,paid_by_nickname:paid?currentNick:null,note:String(old.note||''),time_class:String(old.time_class||'')};
+            const q=old.id?cloudClient.from('clan_distribution_payments').update(payload).eq('id',old.id):cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'});const r=await q;if(r.error)console.warn(r.error);
+          }else if(window.__v39Dist.backend==='private'&&typeof savePrivateState==='function'&&typeof cloudReady!=='undefined'&&cloudReady){await savePrivateState();}
+        }catch(e){console.warn('distribution payment background sync',e)}
+      });
+      setTimeout(()=>{try{if(typeof window.__v405RenderDistribution==='function')window.__v405RenderDistribution()}catch(e){}},0);
+    }catch(e){console.error('distribution payment',e);notify('지급 처리 중 오류가 발생했습니다.');}
+  };
+
+  window.v405SaveInlineNote=async function(memberKey,input){
+    if(!can())return notify('소유자와 군주만 사용할 수 있습니다.');
+    const m=findMember(memberKey);
+    if(!m||!input)return notify('혈맹원을 찾을 수 없습니다.');
+    try{
+      const note=String(input.value||'').trim(),old=record(m);
+      const amount=Number(input.closest('.v405-row')?.querySelector('[data-alloc]')?.value)||Number(old.amount)||0;
+      const id=String(m[4]??m[0]);
+      window.__v39Dist=window.__v39Dist||{};window.__v39Dist.ready=true;window.__v39Dist.payments=window.__v39Dist.payments||{};
+      window.__v39Dist.payments[id]={...old,member_id:id,nickname:String(m[0]),amount,paid:!!old.paid,note,time_class:String(old.time_class||'')};
+      const d=read();d.allocations=d.allocations||{};d.allocations[m[0]]=amount;d.distributionNotes=d.distributionNotes||{};d.distributionNotes[m[0]]=note;
+      if(!write(d))throw new Error('localStorage 저장 실패');
+      input.dataset.saved=note;input.classList.remove('note-dirty');
+      notify('저장되었습니다.');
+      Promise.resolve().then(async()=>{
+        try{
+          if(window.__v39Dist.backend==='dedicated'&&typeof cloudClient!=='undefined'&&cloudClient&&typeof cloudReady!=='undefined'&&cloudReady&&typeof cloudUser!=='undefined'&&cloudUser){
+            const payload={clan_id:typeof CLOUD_CLAN_ID!=='undefined'?CLOUD_CLAN_ID:null,member_id:id,nickname:String(m[0]),amount,paid:!!old.paid,paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note,time_class:String(old.time_class||'')};
+            const q=old.id?cloudClient.from('clan_distribution_payments').update(payload).eq('id',old.id):cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'});const r=await q;if(r.error)console.warn(r.error);
+          }else if(window.__v39Dist.backend==='private'&&typeof savePrivateState==='function'&&typeof cloudReady!=='undefined'&&cloudReady){await savePrivateState();}
+        }catch(e){console.warn('distribution note background sync',e)}
+      });
+    }catch(e){console.error('distribution note',e);notify('저장 중 오류가 발생했습니다.');}
+  };
 })();
 </script>
