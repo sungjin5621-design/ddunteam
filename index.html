@@ -427,53 +427,71 @@ async function loginDdu(){
 }
 async function logoutDdu(){localStorage.removeItem(LOGIN_KEY);if(cloudClient)await cloudClient.auth.signOut();location.reload();}
 async function cloudInit(){
-  if(!cloudConfigured){setLoginError('Supabase 설정이 필요합니다.');return;}
+  const savedRaw=localStorage.getItem(LOGIN_KEY)||'null';
   let saved=null;
-  try{saved=JSON.parse(localStorage.getItem(LOGIN_KEY)||'null')}catch(e){saved=null}
-  if(!saved?.nickname){showLogin();return;}
+  try{saved=JSON.parse(savedRaw);}catch(e){saved=null;}
+  const savedNick=String(saved?.nickname||localStorage.getItem('clanNick')||'').trim();
 
-  // 새로고침 시 익명 세션이 사라져도 기존 로그인 정보를 유지한다.
-  try{
-    let {data:{session},error}=await cloudClient.auth.getSession();
-    if(error)throw error;
-    if(!session){
-      const r=await cloudClient.auth.signInAnonymously();
-      if(r.error)throw r.error;
-      session=r.data.session;
-    }
-    if(session)cloudUser=session.user;
-  }catch(e){
-    console.warn('auth restore failed:',e);
-    // 네트워크가 일시적으로 실패해도 기존 로그인 화면을 강제로 지우지 않는다.
-    if(!cloudUser){showLogin();return;}
+  if(!savedNick){
+    showLogin();
+    return;
   }
 
+  // 기존 로그인 정보가 있으면 먼저 앱 화면을 유지한다.
+  // Supabase 세션 복구 실패가 로그인 자체를 취소시키지 않도록 한다.
+  currentNick=savedNick;
   try{
-    await cloudLoad();
-    if(!members.some(m=>m[0]===saved.nickname)){
-      localStorage.removeItem(LOGIN_KEY);showLogin();return;
+    if(cloudConfigured && cloudClient){
+      let session=null;
+      try{
+        const r=await cloudClient.auth.getSession();
+        session=r?.data?.session||null;
+      }catch(e){console.warn('getSession failed:',e);}
+      if(!session){
+        try{
+          const r=await cloudClient.auth.signInAnonymously();
+          if(!r?.error)session=r?.data?.session||null;
+          else console.warn('anonymous auth failed:',r.error);
+        }catch(e){console.warn('anonymous auth exception:',e);}
+      }
+      if(session)cloudUser=session.user;
+
+      // 세션이 확보된 경우에만 서버 데이터를 갱신한다.
+      if(cloudUser){
+        try{await cloudLoad();}catch(e){
+          console.warn('cloudLoad failed; keeping saved local state:',e);
+        }
+      }
     }
-    const mine=members.find(m=>m[0]===saved.nickname);
-    currentNick=mine?saved.nickname:'설정 필요';
-    cloudReady=true;
-    const ownerBtn=document.getElementById('ownerClaimBtn');if(ownerBtn)ownerBtn.style.display=cloudOwnerId?'none':'inline-grid';
-    const adminBtn=document.getElementById('adminBtn');if(adminBtn)adminBtn.style.display=(String(currentNick||'')==='베키')?'inline-block':'none';
-    const logoutBtn=document.getElementById('logoutBtn');if(logoutBtn)logoutBtn.style.display='inline-grid';
-    showApp();cloudSubscribe();renderAll();
-  }catch(e){
-    console.error('auto login load failed:',e);
-    // 서버가 잠시 응답하지 않으면 로그인 화면으로 튕기지 않고
-    // 기존 로그인 사용자로 앱을 열어 기존 로컬 데이터를 사용할 수 있게 한다.
-    currentNick=saved.nickname;
-    cloudReady=!!cloudUser;
-    const ownerBtn=document.getElementById('ownerClaimBtn');if(ownerBtn)ownerBtn.style.display='none';
-    const adminBtn=document.getElementById('adminBtn');if(adminBtn)adminBtn.style.display=(String(currentNick||'')==='베키')?'inline-block':'none';
-    const logoutBtn=document.getElementById('logoutBtn');if(logoutBtn)logoutBtn.style.display='inline-grid';
-    showApp();
-    try{renderAll()}catch(renderErr){console.error('offline render failed:',renderErr)}
-  }
+  }catch(e){console.warn('cloud initialization failed; using saved login:',e);}
+
+  // 서버에서 최신 members를 받았다면 로그인 닉네임을 검증하되,
+  // 서버 일시 오류/빈 응답 때문에 기존 로그인 정보를 삭제하지 않는다.
+  const mine=Array.isArray(members)?members.find(m=>String(m?.[0]||'').trim()===savedNick):null;
+  if(mine)currentNick=mine[0];
+  else currentNick=savedNick;
+
+  try{
+    localStorage.setItem(LOGIN_KEY,JSON.stringify({nickname:currentNick,at:saved?.at||Date.now()}));
+    localStorage.setItem('clanNick',currentNick);
+  }catch(e){}
+
+  cloudReady=!!cloudUser;
+  try{
+    const ownerBtn=document.getElementById('ownerClaimBtn');
+    if(ownerBtn)ownerBtn.style.display=cloudOwnerId?'none':'inline-grid';
+    const adminBtn=document.getElementById('adminBtn');
+    if(adminBtn)adminBtn.style.display=(String(currentNick||'')==='베키')?'inline-block':'none';
+    const logoutBtn=document.getElementById('logoutBtn');
+    if(logoutBtn)logoutBtn.style.display='inline-grid';
+    refreshOwnerControls();
+  }catch(e){console.warn('login UI setup failed:',e);}
+
+  showApp();
+  if(cloudUser){try{cloudSubscribe();}catch(e){console.warn('subscribe failed:',e);}}
+  try{renderAll();}catch(e){console.warn('renderAll failed:',e);}
 }
-async function cloudLoad(){{
+async function cloudLoad(){
   const [c,m,n,s,k]=await Promise.all([
     cloudClient.from('clans').select('*').eq('id',CLOUD_CLAN_ID).single(),
     cloudClient.from('clan_members').select('*').eq('clan_id',CLOUD_CLAN_ID),
@@ -1748,20 +1766,22 @@ window.updateParticipantSummary=function(){
 })();
 </script>
 
-<script id="stable-auth-final-guard">
+
+<script id="stable-login-logo-fix">
 (function(){
-  // Legacy code may call showLogin during transient backend errors. Once a valid
-  // local login record exists, keep the app visible after the initial boot.
-  const originalShowLogin=window.showLogin;
-  let bootFinished=false;
-  window.showLogin=function(){
-    if(!bootFinished){
-      const hasSaved=(()=>{try{return !!JSON.parse(localStorage.getItem('ddunteam.login')||'null')?.nickname}catch(e){return false}})();
-      if(hasSaved && document.querySelector('.app')?.style.display==='flex') return;
-    }
-    return originalShowLogin.apply(this,arguments);
-  };
-  document.addEventListener('DOMContentLoaded',()=>setTimeout(()=>{bootFinished=true;},1500));
+  function syncLoginLogo(){
+    try{
+      const logo=document.getElementById('loginLogo');
+      const brand=document.querySelector('.brand img');
+      if(logo && brand){
+        const src=brand.currentSrc||brand.getAttribute('src')||'';
+        if(src && (!logo.getAttribute('src') || logo.getAttribute('src')!==src)) logo.src=src;
+      }
+    }catch(e){}
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',syncLoginLogo,{once:true});
+  else syncLoginLogo();
+  setTimeout(syncLoginLogo,500);
 })();
 </script>
 </body>
