@@ -488,7 +488,7 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
 (function(){
   const LS={
     memberInfo:'ddunteam.memberInfo.v34',
-    letters:'ddunteam.letters.v34',
+    letters:'ddunteam.letters.v35',
     memo:'ddunteam.memo.v34',
     inventory:'ddunteam.inventory.v34',
     items:'ddunteam.items.v34',
@@ -496,6 +496,15 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
   };
   const load=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v??d}catch(e){return d}};
   const store=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
+  // Preserve existing letters from every previous release. Never overwrite non-empty data.
+  (function migrateLetters(){
+    const current=load(LS.letters,null);
+    if(Array.isArray(current)&&current.length)return;
+    for(const oldKey of ['ddunteam.letters.v34.1','ddunteam.letters.v34','ddunteam.letters.v33','clanLetters','letters']){
+      const old=load(oldKey,null);
+      if(Array.isArray(old)&&old.length){store(LS.letters,old);break;}
+    }
+  })();
   window._v34={LS,load,store};
 
   /* Keep menu visibility/order locally even if the old cloud table has no visible column. */
@@ -579,7 +588,7 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
   };
   window.deleteSchedule=async function(id){if(!canManage())return toast('일정 관리 권한이 없습니다.');if(typeof cloudReady!=='undefined'&&cloudReady){const {error}=await cloudClient.from('clan_schedules').delete().eq('id',id);if(error)return cloudErr(error);await cloudRefresh();openSchedule();return;}schedules=schedules.filter(s=>s.id!==id);save();renderAll();openSchedule();};
   window.openCalendarDetail=async function(y=new Date().getFullYear(),m=new Date().getMonth()){if(typeof cloudReady!=='undefined'&&cloudReady){try{await cloudLoad()}catch(e){cloudErr(e)}}renderCalendarDetail(y,m)};
-  window.renderCalendar=function(){const el=document.getElementById('calendar');if(!el)return;const now=new Date(),y=now.getFullYear(),m=now.getMonth(),first=new Date(y,m,1),last=new Date(y,m+1,0);el.innerHTML='';for(let i=0;i<first.getDay();i++)el.innerHTML+='<div class="day muted"></div>';for(let d=1;d<=last.getDate();d++){const ds=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'),date=new Date(y,m,d),its=schedules.filter(s=>s.date===ds).sort((a,b)=>a.start-b.start);el.innerHTML+=`<div class="day ${dayClass(ds,date)}" onclick="${canManage()?'openScheduleEditor(null,\''+ds+'\',21)':''}"><div>${d}</div>${koreanHolidays[ds]?`<div class="holiday-name">${koreanHolidays[ds]}</div>`:''}${its.slice(0,2).map(s=>`<div class="mini-cal-event" onclick="event.stopPropagation();openScheduleEditor(${s.id})">${String(s.start).padStart(2,'0')}:00 ${escapeHtml(s.title)}</div>`).join('')}</div>`}};
+  window.renderCalendar=function(){const el=document.getElementById('calendar');if(!el)return;const now=new Date(),y=now.getFullYear(),m=now.getMonth(),first=new Date(y,m,1),last=new Date(y,m+1,0);let html='';for(let i=0;i<first.getDay();i++)html+='<div class="day muted"></div>';for(let d=1;d<=last.getDate();d++){const ds=y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'),date=new Date(y,m,d);html+=`<div class="day ${dayClass(ds,date)}" onclick="${canManage()?'openScheduleEditor(null,\''+ds+'\',21)':''}"><div>${d}</div>${koreanHolidays[ds]?`<div class="holiday-name">${koreanHolidays[ds]}</div>`:''}</div>`}el.innerHTML=html};
 
   /* Main page render: live calendar + current class distribution. */
   const oldRenderAll=window.renderAll;
@@ -726,5 +735,90 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
 })();
 </script>
 
+
+<script>
+/* v37.2 FINAL STABILIZATION: restore legacy data/order/rank behavior and fix layout regressions. */
+(function(){
+  const rankKey='ddunteam.memberRanks.v35';
+  const readRanks=()=>{try{const v=JSON.parse(localStorage.getItem(rankKey)||'{}');return v&&typeof v==='object'?v:{};}catch(e){return {};}};
+  const writeRanks=v=>localStorage.setItem(rankKey,JSON.stringify(v||{}));
+  window.getRanks=()=>readRanks();
+  window.saveRank=(name,value)=>{const n=String(name||'').trim();if(!n)return;const r=readRanks(),v=String(value??'').trim();if(!v)delete r[n];else{const num=parseInt(v,10);if(Number.isFinite(num)&&num>0)r[n]=num;else delete r[n];}writeRanks(r);};
+  window.renameMemberRank=(oldName,newName)=>{const o=String(oldName||'').trim(),n=String(newName||'').trim();if(!o||!n||o===n)return;const r=readRanks();if(Object.prototype.hasOwnProperty.call(r,o)){r[n]=r[o];delete r[o];writeRanks(r);}};
+
+  const roleOrder={'페이지 소유자':0,'군주':1,'관리자':2,'수호':3,'일반':4};
+  function sortedMembers(list){
+    const ranks=readRanks();
+    return list.map((m,i)=>{const role=String(m[0])==='베키'?'페이지 소유자':String(m[3]||'일반');const raw=ranks[String(m[0]||'')];const rankVal=(raw!==undefined&&raw!==null&&String(raw).trim()!=='')?Number(raw):null;return {m,i,role,roleOrder:roleOrder[role]??4,level:Number(m[1])||0,rankVal};}).sort((a,b)=>a.roleOrder-b.roleOrder||b.level-a.level||((a.rankVal===null)-(b.rankVal===null))||(a.rankVal===null?0:b.rankVal===null?0:a.rankVal-b.rankVal)||String(a.m[0]||'').localeCompare(String(b.m[0]||''),'ko'));
+  }
+  window.__sortMembersByFinalRule=sortedMembers;
+
+  window.renderMembers=function(){
+    const q=(document.getElementById('memberSearch')?.value||'').trim().toLowerCase(),el=document.getElementById('members');if(!el||!Array.isArray(members))return;
+    const rows=sortedMembers(members).filter(x=>String(x.m[0]||'').toLowerCase().includes(q));el.innerHTML='';
+    rows.forEach(x=>{const m=x.m,i=x.i,selected=selectedMember===i,d=document.createElement('div');d.className='member'+(selected?' active selected':'');d.dataset.memberIndex=String(i);d.onclick=e=>{if(e.target.closest('button')||e.target.closest('input'))return;e.preventDefault();e.stopPropagation();toggleMemberSelection(i);};const cls=x.role==='페이지 소유자'?'rank-owner':x.role==='군주'?'rank-lord':x.role==='관리자'?'rank-admin':x.role==='수호'?'rank-guard':'rank-normal';const canEdit=typeof canClanManage==='function'&&canClanManage();const actions=canEdit?'<button class="mini" onclick="event.stopPropagation();openMemberModal('+i+')">수정</button><button class="mini" title="운영진 특이사항 보기" onclick="event.stopPropagation();openMemberNoteViewer('+i+')">🔍</button>':'';const removeBtn=selected&&canEdit&&m[0]!=='베키'?'<button class="mini danger member-remove" title="혈맹원 제거" onclick="event.stopPropagation();removeSelected('+i+')">×</button>':'';d.innerHTML='<div class="avatar">'+escapeHtml(String(m[0]||'')[0]||'?')+'</div><div class="mtext"><div class="mname">'+escapeHtml(m[0])+' <span class="rank '+cls+'">'+escapeHtml(x.role)+'</span></div><div class="sub">Lv.'+(m[1]??'')+' · '+escapeHtml(m[2]||'모름')+'</div></div><div class="member-actions">'+actions+removeBtn+'</div>';el.appendChild(d);});
+    const count=document.getElementById('memberCount');if(count)count.textContent=members.length+'명';
+  };
+
+  // Rank field restored in the member editor; no rank badge is shown in lists.
+  window.openMemberModal=function(i=null){
+    if(!canClanManage())return toast('혈맹원 정보 수정은 페이지 소유자/군주/관리자만 가능합니다.');
+    const m=i===null?['',90,'모름','일반','','']:members[i];if(!m)return toast('혈맹원을 찾을 수 없습니다.');const ranks=readRanks(),rankVal=ranks[m[0]]??'',selectedWeapon=m[2]||'모름';
+    openModal(`<div class="modal-head"><h3>${i===null?'혈맹원 추가':'혈맹원 프로필 수정'}</h3><button class="close" onclick="closeModal()">×</button></div><div class="form"><div class="row"><label>닉네임<input id="f0" value="${escapeHtml(m[0])}"></label><label>레벨<input id="f1" type="number" value="${m[1]||90}"></label></div><label>랭킹 순위<input id="fRank" type="number" min="1" placeholder="랭킹 순위 (선택)" value="${escapeHtml(String(rankVal))}"></label><div class="picker-section"><div class="picker-title">웨폰</div><input id="f2" type="hidden" value="${escapeHtml(selectedWeapon)}"><div class="weapon-grid">${weaponNames.map(w=>`<button type="button" class="weapon-choice ${w===selectedWeapon?'active':''}" onclick="selectWeapon('${escapeHtml(w)}')">${escapeHtml(w)}</button>`).join('')}</div></div><label>등급<select id="f3">${['군주','관리자','수호','일반'].map(r=>`<option ${r===m[3]?'selected':''}>${r}</option>`).join('')}</select></label></div><div class="modal-actions"><button onclick="closeModal()">취소</button><button class="primary" onclick="saveMember(${i===null?'null':i})">저장</button></div>`,'small');
+  };
+  window.saveMember=async function(i){
+    if(!canClanManage())return toast('혈맹원 관리는 페이지 소유자/군주/관리자만 가능합니다.');
+    if(!cloudReady)return toast('서버 연결 중입니다. 잠시 후 다시 시도해주세요.');
+    const editing=i!==null&&i!==undefined,target=editing?members[i]:null;if(editing&&!target)return toast('혈맹원을 찾을 수 없습니다.');
+    const original=editing?String(target[0]||''):'';const n=String(document.getElementById('f0')?.value||'').trim();const lvl=Number(document.getElementById('f1')?.value||0);const w=String(document.getElementById('f2')?.value||'모름');const r=String(document.getElementById('f3')?.value||'일반');const rank=String(document.getElementById('fRank')?.value||'').trim();
+    if(!n)return toast('닉네임을 입력해주세요.');if(editing&&original==='베키'&&n!=='베키')return toast('페이지 소유자 닉네임은 변경할 수 없습니다.');if(members.some((m,idx)=>String(m[0])===n&&idx!==i))return toast('이미 사용 중인 닉네임입니다.');
+    const payload={clan_id:CLOUD_CLAN_ID,nickname:n,level:lvl,weapon:w,role:r};const q=editing?cloudClient.from('clan_members').update(payload).eq('id',target[4]):cloudClient.from('clan_members').insert(payload);const {error}=await q;if(error)return cloudErr(error);if(editing&&original!==n)renameMemberRank(original,n);saveRank(n,rank);await cloudLoad();renderAll();closeModal();toast('혈맹원 정보가 저장되었습니다.');
+  };
+
+  window.renderMembersPage=function(){
+    const extra=document.getElementById('extraPage');if(!extra)return;const info=window._v34?.load?.(window._v34.LS.memberInfo,{})||{};const rows=sortedMembers(members.filter(m=>+m[1]!==100)).map(x=>x.m);
+    extra.innerHTML=`<div class="card data-page"><div class="head"><div><div class="title">♙ 인원 관리</div><div class="admin-sub">Lv.100은 관리 대상에서 제외됩니다. 혈맹원 목록과 동일한 정렬 기준으로 표시합니다.</div></div><button class="ghost" onclick="saveMemberManagement()">저장</button></div><div class="member-management-table"><div class="mm-head"><span>닉네임</span><span>레벨</span><span>같이 하는 분</span><span>스펙 정보</span><span>클래스</span><span>비고</span></div>${rows.map(m=>{const x=info[m[0]]||{};return `<div class="mm-row"><b>${escapeHtml(m[0])}</b><span>Lv.${m[1]}</span><input data-mm="${escapeHtml(m[0])}" data-field="together" value="${escapeHtml(x.together||'')}"><input data-mm="${escapeHtml(m[0])}" data-field="spec" value="${escapeHtml(x.spec||'')}"><span>${escapeHtml(m[2]||'모름')}</span><input data-mm="${escapeHtml(m[0])}" data-field="memo" value="${escapeHtml(x.memo||'')}"></div>`}).join('')}</div></div>`;
+  };
+
+  // Distribution ordering follows exactly the same member ordering as the sidebar.
+  if(typeof window.renderPrivateMemo==='function'){
+    const baseMemo=window.renderPrivateMemo;
+    window.renderPrivateMemo=function(){return baseMemo();};
+  }
+
+  function syncTopControls(){
+    const owner=isPageOwner();const edit=document.getElementById('categoryEditBtn'),admin=document.getElementById('adminBtn');if(edit)edit.style.display=owner?'inline-block':'none';if(admin)admin.style.display=owner?'inline-block':'none';
+  }
+  const prevRenderAll=window.renderAll;
+  window.renderAll=function(){if(typeof prevRenderAll==='function')prevRenderAll();syncTopControls();};
+  const prevShowPage=window.showPage;
+  window.showPage=function(page,btn){if(typeof prevShowPage==='function')prevShowPage(page,btn);syncTopControls();};
+
+  // Correct login passwords and preserve nickname before cloudLoad can overwrite it.
+  window.loginDdu=async function(){
+    if(!cloudConfigured)return setLoginError('서버 설정이 완료되지 않았습니다.');
+    const nick=document.getElementById('loginNick').value.trim(),pw=document.getElementById('loginPw').value.trim();if(!nick)return setLoginError('닉네임을 입력해주세요.');
+    const member=members.find(m=>m[0]===nick),role=member?.[3]||'';const expected=nick==='베키'?'5621':(['군주','관리자','수호'].includes(role)?'12161216':'1216');if(pw!==expected)return setLoginError('비밀번호가 올바르지 않습니다.');
+    const btn=document.getElementById('loginSubmit');btn.disabled=true;setLoginError('접속 확인 중...');
+    try{let {data:{session}}=await cloudClient.auth.getSession();if(!session){const r=await cloudClient.auth.signInAnonymously();if(r.error)throw r.error;session=r.data.session;}cloudUser=session.user;localStorage.setItem(LOGIN_KEY,JSON.stringify({nickname:nick,at:Date.now()}));currentNick=nick;await cloudLoad();currentNick=nick;if(!members.some(m=>m[0]===nick))throw new Error('등록된 혈맹원 닉네임과 일치하지 않습니다.');cloudReady=true;showApp();cloudSubscribe();renderAll();setLoginError('');document.getElementById('loginPw').value='';syncTopControls();}catch(e){console.error(e);setLoginError(e?.message||'로그인에 실패했습니다.');}finally{btn.disabled=false;}
+  };
+
+  // Main calendar must never show schedule previews; holidays remain visible.
+  const style=document.createElement('style');style.textContent=`
+    #calendar .mini-cal-event{display:none!important}
+    .memo-page-grid{grid-template-columns:minmax(0,1fr) minmax(280px,360px)!important;min-width:0}
+    .memo-page-grid>.card{min-width:0;overflow:hidden}
+    .allocation-list{grid-template-columns:repeat(2,minmax(0,1fr))!important;min-width:0}
+    .allocation-row{grid-template-columns:minmax(0,1fr) 70px 12px 48px 32px!important;min-width:0}
+    .allocation-row>*{min-width:0}
+    .allocation-row input{width:100%;box-sizing:border-box}
+    .pay-toggle,.memo-mini{overflow:hidden;text-overflow:ellipsis}
+    .member-management-table{overflow-x:hidden;max-width:100%}
+    .mm-row,.mm-head{min-width:0}
+    @media(max-width:1100px){.allocation-list{grid-template-columns:1fr!important}.memo-page-grid{grid-template-columns:1fr!important}}
+  `;document.head.appendChild(style);
+  document.addEventListener('DOMContentLoaded',()=>{setTimeout(()=>{syncTopControls();renderMembers();},50);});
+})();
+</script>
 </body>
 </html>
