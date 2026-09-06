@@ -1,6 +1,17 @@
-v40.7 final persistence fix
-- Distribution payment state persists locally and merges with Supabase clan_private_state on reload.
-- Operating memo is a cafe-style append-only history with author/date/time and delete.
-- Distribution notes and amounts persist.
-- Existing member-management ordering is preserved.
-- Replace the existing index.html only.
+뚠뚠팀 v40.6 CLEAN
+
+배포 방법
+- 기존 index.html을 이 파일의 index.html로 교체하세요.
+- Supabase SQL 추가 실행은 필요하지 않습니다.
+- 기존 clan_private_state의 state_key=distribution을 분배금 데이터 저장소로 사용합니다.
+
+주요 수정
+- 기존 안정 버전(v40.3) 기반으로 재구성
+- 분배금 관리 화면은 인원 관리의 getOrderedMembers() 순서를 그대로 사용
+- 랭킹 숫자 표시 제거
+- 분배금/지급상태/특이사항/운영메모를 clan_private_state에 영구 저장
+- 운영 메모는 작성자/날짜/시간이 포함된 누적 기록 방식
+- 지급/지급취소 및 메모 저장 성공 토스트
+- 새로고침 시 서버 저장 데이터를 우선 복원
+- 사다리 전체 결과 보기 보강
+- 기존 로그인/인증 구조는 안정 버전 그대로 유지
