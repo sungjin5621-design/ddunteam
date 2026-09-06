@@ -1695,6 +1695,95 @@ window.updateParticipantSummary=function(){
   setTimeout(()=>{if(document.getElementById('extraPage')&&document.querySelector('#tabs button.active')?.getAttribute('onclick')?.includes("'memo'"))window.__v405RenderDistribution();},50);
 })();
 </script>
+
+<script id="v405-robust-local-persistence-fix">
+(function(){
+  'use strict';
+  // 분배금은 Supabase 전용 테이블이 없어도 브라우저 로컬 저장을 기준으로 정상 동작한다.
+  // 서버 동기화는 백그라운드에서 시도하되, 실패가 UI 동작/성공 이벤트를 막지 않는다.
+  const KEY = (window.LS && LS.memo) || 'ddunteam.memo.v34';
+  const read = (d)=>{try{const v=localStorage.getItem(KEY);return v==null?d:JSON.parse(v)||d}catch(e){return d}};
+  const write = (v)=>{try{localStorage.setItem(KEY,JSON.stringify(v));return true}catch(e){console.warn('distribution local save:',e);return false}};
+  const notify = (msg)=>{try{if(typeof safeToast==='function')safeToast(msg);else if(typeof toast==='function')toast(msg);else console.info(msg)}catch(e){console.info(msg)}};
+  const memberById=(id)=>(Array.isArray(window.members)?window.members:[]).find(m=>String(m?.[4]??m?.[0]??'')===String(id));
+  const rec=(m)=>{try{if(typeof window.v39DistributionRecord==='function')return window.v39DistributionRecord(m)||{}}catch(e){};const p=window.__v39Dist?.payments||{};return p[String(m?.[4]??m?.[0]??'')]||p[String(m?.[0]??'')]||{amount:0,paid:false,note:'',time_class:''}};
+  const persistPayment=(m,amount,paid,note)=>{
+    const d=read({diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}});
+    d.allocations=d.allocations||{}; d.allocations[m[0]]=Number(amount)||0;
+    d.distributionNotes=d.distributionNotes||{}; if(note!==undefined)d.distributionNotes[m[0]]=String(note);
+    write(d);
+    window.__v39Dist=window.__v39Dist||{payments:{},settings:{diamond:0,notes:''},ready:true,backend:'local'};
+    window.__v39Dist.ready=true;window.__v39Dist.payments=window.__v39Dist.payments||{};
+    const old=rec(m);
+    window.__v39Dist.payments[String(m[4]??m[0])]={...old,clan_id:window.CLOUD_CLAN_ID,member_id:String(m[4]??m[0]),nickname:m[0],amount:Number(amount)||0,paid:!!paid,note:note!==undefined?String(note):String(old.note||'')};
+  };
+
+  window.v39TogglePaid=async function(memberId){
+    try{
+      if(typeof canDist==='function'&&!canDist())return notify('소유자와 군주만 분배금을 관리할 수 있습니다.');
+      const m=memberById(memberId); if(!m)return notify('혈맹원을 찾을 수 없습니다.');
+      const old=rec(m), input=document.querySelector(`[data-alloc="${CSS.escape(String(m[0]))}"]`), amount=Number(input?.value)||Number(old.amount)||0, paid=!old.paid;
+      persistPayment(m,amount,paid,old.note||'');
+      notify(paid?'지급되었습니다.':'지급이 취소되었습니다.');
+      // 서버 동기화는 실패해도 사용자 동작에는 영향을 주지 않는다.
+      Promise.resolve().then(async()=>{
+        try{
+          if(window.__v39Dist.backend==='dedicated'&&window.cloudClient&&window.cloudReady&&window.cloudUser){
+            const payload={clan_id:window.CLOUD_CLAN_ID,member_id:String(m[4]??m[0]),nickname:m[0],amount,paid,paid_at:paid?new Date().toISOString():null,paid_by_user_id:paid?window.cloudUser.id:null,paid_by_nickname:paid?window.currentNick:null,note:old.note||'',time_class:old.time_class||''};
+            const q=old.id?window.cloudClient.from('clan_distribution_payments').update(payload).eq('id',old.id):window.cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'}); await q;
+          }else if(window.__v39Dist.backend==='private'&&window.cloudClient&&window.cloudReady&&window.cloudUser&&typeof window.savePrivateState==='function'){await window.savePrivateState();}
+        }catch(e){console.warn('distribution payment background sync:',e)}
+      });
+      try{if(typeof window.__v405RenderDistribution==='function')window.__v405RenderDistribution()}catch(e){console.warn(e)}
+    }catch(e){console.error(e);notify('지급 처리 중 오류가 발생했습니다.')}
+  };
+
+  window.v405SaveInlineNote=async function(memberId,input){
+    try{
+      if(typeof canDist==='function'&&!canDist())return notify('소유자와 군주만 사용할 수 있습니다.');
+      const m=memberById(memberId); if(!m||!input)return;
+      const note=String(input.value||'').trim(), old=rec(m), amount=Number(input.closest('.v405-row')?.querySelector('[data-alloc]')?.value)||Number(old.amount)||0;
+      persistPayment(m,amount,!!old.paid,note);
+      input.dataset.saved=note;input.classList.remove('note-dirty');
+      notify('저장되었습니다.');
+      Promise.resolve().then(async()=>{
+        try{
+          const payload={clan_id:window.CLOUD_CLAN_ID,member_id:String(m[4]??m[0]),nickname:m[0],amount,paid:!!old.paid,paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note,time_class:old.time_class||''};
+          if(window.__v39Dist.backend==='dedicated'&&window.cloudClient&&window.cloudReady&&window.cloudUser){await (old.id?window.cloudClient.from('clan_distribution_payments').update(payload).eq('id',old.id):window.cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'}));}
+          else if(window.__v39Dist.backend==='private'&&window.cloudClient&&window.cloudReady&&window.cloudUser&&typeof window.savePrivateState==='function'){await window.savePrivateState();}
+        }catch(e){console.warn('distribution note background sync:',e)}
+      });
+    }catch(e){console.error(e);notify('저장 중 오류가 발생했습니다.')}
+  };
+
+  window.savePrivateMemo=async function(){
+    try{
+      if(typeof canDist==='function'&&!canDist())return notify('소유자와 군주만 사용할 수 있습니다.');
+      const d=read({diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}});
+      d.diamond=Number(document.getElementById('memoDiamond')?.value)||0;
+      d.allocations=d.allocations||{};d.timeClass=d.timeClass||{};d.distributionNotes=d.distributionNotes||{};
+      document.querySelectorAll('[data-alloc]').forEach(e=>d.allocations[e.dataset.alloc]=Number(e.value)||0);
+      document.querySelectorAll('[data-time]').forEach(e=>d.timeClass[e.dataset.time]=e.value);
+      document.querySelectorAll('.v405-note').forEach(e=>d.distributionNotes[e.dataset.noteMember]=String(e.value||'').trim());
+      d.notes=String(document.getElementById('privateNotes')?.value||d.notes||'').trim();
+      write(d);
+      // 성공 이벤트는 서버 응답을 기다리지 않고 즉시 표시한다.
+      notify('저장되었습니다.');
+      Promise.resolve().then(async()=>{
+        try{
+          if(window.__v39Dist?.backend==='dedicated'&&window.cloudClient&&window.cloudReady&&window.cloudUser){
+            const settings=window.cloudClient.from('clan_distribution_settings').upsert({clan_id:window.CLOUD_CLAN_ID,diamond:d.diamond,notes:d.notes,updated_at:new Date().toISOString(),updated_by_user_id:window.cloudUser.id,updated_by_nickname:window.currentNick},{onConflict:'clan_id'});
+            await settings;
+          }else if(window.__v39Dist?.backend==='private'&&window.cloudClient&&window.cloudReady&&window.cloudUser&&typeof window.savePrivateState==='function'){
+            window.__v39Dist.settings={diamond:d.diamond,notes:d.notes};await window.savePrivateState();
+          }
+        }catch(e){console.warn('distribution save background sync:',e)}
+      });
+    }catch(e){console.error('distribution save:',e);notify('저장 중 오류가 발생했습니다.')}
+  };
+})();
+</script>
+
 </body>
 </html>
 
