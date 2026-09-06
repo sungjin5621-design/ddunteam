@@ -1276,10 +1276,11 @@ window.updateParticipantSummary=function(){
   }
   function memoCanPost(){
     try{
-      const nick=(typeof currentNick!=='undefined')?String(currentNick||''):'';
-      const ownerOk=(typeof window.isPageOwner==='function' && window.isPageOwner()) || nick==='베키';
-      const rankOk=(typeof window.rankOf==='function' && window.rankOf(nick)==='군주');
-      return ownerOk || rankOk;
+      const nick=(typeof currentNick!=='undefined')?String(currentNick||'').trim():'';
+      if(nick==='베키') return true;
+      const ownerOk=(typeof window.isPageOwner==='function' && window.isPageOwner());
+      const rankOk=(typeof window.rankOf==='function' && String(window.rankOf(nick)||'').trim()==='군주');
+      return !!(ownerOk || rankOk);
     }catch(e){ return false; }
   }
   window.postPrivateMemo=function(){
@@ -1574,7 +1575,13 @@ window.updateParticipantSummary=function(){
     const r=window.__v39Dist?.payments||{};
     return r[id]||r[name]||{};
   }
-  function canMemo(){return typeof canDist==='function'?canDist():(typeof isPageOwner==='function'&&isPageOwner())||(typeof rankOf==='function'&&rankOf(currentNick)==='군주');}
+  function canMemo(){
+    const nick=String(typeof currentNick!=='undefined'?currentNick:'').trim();
+    if(nick==='베키') return true;
+    try{ if(typeof isPageOwner==='function' && isPageOwner()) return true; }catch(e){}
+    try{ if(typeof rankOf==='function' && String(rankOf(nick)||'').trim()==='군주') return true; }catch(e){}
+    return false;
+  }
   window.v402SetSort=function(v){writeLS(SORT_KEY,v);window.__v402RenderMemo();};
   window.v402SetFilter=function(v){writeLS(FILTER_KEY,v);window.__v402RenderMemo();};
   window.__v402RenderMemo=function(){
