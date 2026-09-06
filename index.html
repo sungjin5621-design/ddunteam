@@ -1791,6 +1791,168 @@ window.updateParticipantSummary=function(){
   setTimeout(syncLoginLogo,500);
 })();
 </script>
+<script>
+/* v40.7 FINAL MENU ROUTER FIX
+   Distribution management belongs inside the "뚠뚠 메모장" page.
+   This final router is intentionally last so older routing patches cannot
+   repaint the memo tab with another menu's placeholder.
+*/
+(function(){
+  function escSafe(v){
+    return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+  function tabButton(id){
+    return [...document.querySelectorAll('#tabs button')].find(b=>{
+      const oc=b.getAttribute('onclick')||'';
+      return oc.includes("'"+id+"'") || oc.includes('"'+id+'"');
+    });
+  }
+  function showPlaceholder(title){
+    const extra=document.getElementById('extraPage');
+    if(!extra)return;
+    extra.innerHTML='<div class="card menu-page" style="min-height:760px"><div class="head"><div class="title">'+escSafe(title)+'</div></div><div class="menu-placeholder">이 메뉴의 상세 기능은 준비 중입니다.</div></div>';
+  }
+  window.showPage=function(page,btn){
+    /* Legacy routes: distribution is no longer its own top-level menu. */
+    if(page==='items') page='memo';
+    const memo=tabButton('memo');
+    renderTabs(page);
+    if(page==='memo' && memo) {
+      /* Force the actual memo tab active, even if a legacy wrapper passed a stale button. */
+      document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('active',x===memo));
+    }
+    const dashboard=document.getElementById('dashboard');
+    const banner=document.querySelector('.banner');
+    const kpis=document.querySelector('.kpis');
+    const extra=document.getElementById('extraPage');
+    if(!dashboard||!extra)return;
+    if(page==='main'){
+      if(banner)banner.style.display='flex';
+      if(kpis)kpis.style.display='grid';
+      dashboard.style.display='grid';
+      extra.style.display='none';
+      if(typeof renderAll==='function')renderAll();
+      return;
+    }
+    if(banner)banner.style.display='none';
+    if(kpis)kpis.style.display='none';
+    dashboard.style.display='none';
+    extra.style.display='block';
+
+    if(page==='memo'){
+      if(typeof window.__v406RenderDistribution==='function'){
+        try{window.__v406RenderDistribution();}catch(e){console.error('memo render',e);}
+      }else if(typeof window.__v402RenderMemo==='function'){
+        window.__v402RenderMemo();
+      }else if(typeof renderPrivateMemo==='function'){
+        extra.innerHTML=renderPrivateMemo();
+      }else{
+        showPlaceholder('▤ 뚠뚠 메모장');
+      }
+      return;
+    }
+    if(page==='letter'){ if(typeof renderLetters==='function')extra.innerHTML=renderLetters(); else showPlaceholder(btn?.textContent||'마음의 편지'); return; }
+    if(page==='members'){ if(typeof renderMembersPage==='function')renderMembersPage(); else showPlaceholder(btn?.textContent||'인원 관리'); return; }
+    if(page==='inventory'){ if(typeof renderInventory==='function')extra.innerHTML=renderInventory(); else showPlaceholder(btn?.textContent||'보유 혈맹 리스트'); return; }
+    if(page==='minigame'){ if(typeof renderMiniGamesPage==='function')renderMiniGamesPage(); else if(typeof renderMiniGamesV368==='function')renderMiniGamesV368(); else showPlaceholder(btn?.textContent||'미니 게임'); return; }
+    if(page==='misc'){ showPlaceholder('◆ 잡지식'); return; }
+    if(page==='enemy'){ showPlaceholder('☷ 적 리스트'); return; }
+    if(page==='calendar'){ if(typeof renderPageCalendar==='function'){extra.innerHTML='<div class="card calendar-card" style="min-height:760px"><div class="head"><div class="title">▣ 공유 캘린더</div></div><div class="cal-head"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div><div id="pageCalendar" class="cal-grid"></div></div>';renderPageCalendar();}else showPlaceholder('공유 캘린더'); return; }
+    if(page==='schedule'){ if(typeof openSchedule==='function')showPlaceholder('⚔ 리니지 일정표'); else showPlaceholder('⚔ 리니지 일정표'); return; }
+    showPlaceholder(btn?.textContent||page);
+  };
+
+  function cleanLegacyCategoryState(){
+    try{
+      const raw=localStorage.getItem('clanCategories');
+      if(raw){
+        const arr=JSON.parse(raw);
+        if(Array.isArray(arr)) localStorage.setItem('clanCategories',JSON.stringify(arr.filter(c=>c&&c.id!=='items')));
+      }
+    }catch(e){}
+    try{
+      const raw=localStorage.getItem('clanMenuAccess');
+      if(raw){
+        const obj=JSON.parse(raw);
+        if(obj&&typeof obj==='object'){delete obj.items;localStorage.setItem('clanMenuAccess',JSON.stringify(obj));}
+      }
+    }catch(e){}
+  }
+  function boot(){
+    cleanLegacyCategoryState();
+    if(typeof renderTabs==='function')renderTabs(document.querySelector('#tabs button.active')?.getAttribute('onclick')?.match(/showPage\(['"]([^'"]+)/)?.[1]||'main');
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot); else setTimeout(boot,0);
+})();
+</script>
+
+
+<script id="v408-hard-memo-router">
+(function(){
+  'use strict';
+  // v40.8: final hard router. The memo page is the single home of distribution
+  // management. Do not call any older showPage wrapper for the memo route.
+  function memoButton(){
+    return Array.from(document.querySelectorAll('#tabs button')).find(function(b){
+      return /뚠뚠\s*메모장/.test((b.textContent||''));
+    });
+  }
+  function activateMemoButton(){
+    var b=memoButton();
+    document.querySelectorAll('#tabs button').forEach(function(x){x.classList.toggle('active',x===b);});
+    return b;
+  }
+  function renderMemoNow(){
+    var extra=document.getElementById('extraPage');
+    var dash=document.getElementById('dashboard');
+    var banner=document.querySelector('.banner');
+    var kpis=document.querySelector('.kpis');
+    if(!extra)return false;
+    activateMemoButton();
+    if(dash)dash.style.display='none';
+    if(banner)banner.style.display='none';
+    if(kpis)kpis.style.display='none';
+    extra.style.display='block';
+    try{
+      if(typeof window.__v406RenderDistribution==='function'){
+        window.__v406RenderDistribution();
+        return true;
+      }
+    }catch(e){console.error('v40.8 memo distribution render',e);}
+    try{
+      if(typeof window.__v402RenderMemo==='function'){
+        window.__v402RenderMemo();
+        return true;
+      }
+    }catch(e){console.error('v40.8 memo fallback render',e);}
+    try{
+      if(typeof window.renderPrivateMemo==='function'){
+        extra.innerHTML=window.renderPrivateMemo();
+        return true;
+      }
+    }catch(e){console.error('v40.8 legacy memo render',e);}
+    extra.innerHTML='<div class="card data-page"><div class="permission">뚠뚠 메모장을 불러오는 중입니다. 새로고침 후 다시 시도해주세요.</div></div>';
+    return false;
+  }
+  var previousShow=window.showPage;
+  window.showPage=function(page,btn){
+    if(page==='items'||page==='memo'){
+      renderMemoNow();
+      return;
+    }
+    if(typeof previousShow==='function')return previousShow.apply(this,arguments);
+  };
+  window.__v408RenderMemo=renderMemoNow;
+  function boot(){
+    var active=document.querySelector('#tabs button.active');
+    var text=active?(active.textContent||''):'';
+    if(/뚠뚠\s*메모장/.test(text))renderMemoNow();
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(boot,50);setTimeout(boot,500);});
+  else {setTimeout(boot,50);setTimeout(boot,500);}
+})();
+</script>
+
 </body>
 </html>
 
