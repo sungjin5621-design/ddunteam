@@ -1855,6 +1855,93 @@ window.updateParticipantSummary=function(){
   };
 })();
 </script>
+
+<script id="v405-persistent-payment-state-fix10">
+(function(){
+  'use strict';
+  // 분배금 지급 상태는 서버 DB와 별개로 브라우저에도 보존한다.
+  // 새로고침 시 서버에 빈 데이터가 있더라도 지급/미지급 상태가 초기화되지 않도록 한다.
+  const KEY='ddunteam.distribution.persistence.v1';
+  const read=()=>{try{return JSON.parse(localStorage.getItem(KEY)||'null')||{members:{},diamond:0,notes:''};}catch(e){return {members:{},diamond:0,notes:''};}};
+  const write=v=>{try{localStorage.setItem(KEY,JSON.stringify(v));return true;}catch(e){console.warn('distribution persistence:',e);return false;}};
+  const getMembers=()=>{try{return (typeof members!=='undefined'&&Array.isArray(members))?members:[];}catch(e){return [];}};
+  const keyOf=m=>String(m?.[4]??m?.[0]??'');
+  const nameOf=m=>String(m?.[0]??'');
+  const find=k=>{const s=String(k??'');return getMembers().find(m=>keyOf(m)===s||nameOf(m)===s);};
+  const oldRec=m=>{try{if(typeof window.v39DistributionRecord==='function')return window.v39DistributionRecord(m)||{};}catch(e){}return {};};
+  function hydrate(){
+    const ms=getMembers(); if(!ms.length)return false;
+    const local=read(); local.members=local.members||{};
+    window.__v39Dist=window.__v39Dist||{payments:{},settings:{diamond:0,notes:''},ready:true,backend:'local'};
+    window.__v39Dist.payments=window.__v39Dist.payments||{};
+    let changed=false;
+    ms.filter(m=>Number(m?.[1])!==100).forEach(m=>{
+      const k=keyOf(m), n=nameOf(m), saved=local.members[k]||local.members[n];
+      if(!saved)return;
+      const current=oldRec(m);
+      // 로컬에 저장된 지급 상태를 우선 복원한다. 서버가 빈 상태를 내려주는 경우도 보호한다.
+      const rec={...current,...saved,member_id:k,nickname:n};
+      window.__v39Dist.payments[k]=rec;
+      if(n && local.members[n]===undefined){local.members[n]=rec;changed=true;}
+    });
+    if(changed)write(local);
+    return true;
+  }
+  function persist(m,patch){
+    const d=read();d.members=d.members||{};
+    const k=keyOf(m),n=nameOf(m), old=d.members[k]||d.members[n]||oldRec(m)||{};
+    const rec={...old,...patch,member_id:k,nickname:n};
+    d.members[k]=rec; if(n)d.members[n]=rec; write(d);
+    window.__v39Dist=window.__v39Dist||{payments:{},settings:{diamond:0,notes:''},ready:true,backend:'local'};
+    window.__v39Dist.payments=window.__v39Dist.payments||{};
+    window.__v39Dist.payments[k]=rec;
+  }
+  window.__v405PersistDistributionMember=function(m,patch){persist(m,patch);};
+  window.__v405HydrateDistribution=function(){return hydrate();};
+
+  const originalToggle=window.v39TogglePaid;
+  window.v39TogglePaid=async function(memberId){
+    const m=find(memberId);
+    if(m){
+      const current=oldRec(m), paid=!current.paid;
+      let amount=Number(current.amount)||0;
+      try{const el=document.querySelector(`[data-alloc="${CSS.escape(nameOf(m))}"]`);if(el)amount=Number(el.value)||0;}catch(e){}
+      persist(m,{amount,paid,paid_at:paid?new Date().toISOString():null,note:String(current.note||''),time_class:String(current.time_class||'')});
+    }
+    if(typeof originalToggle==='function'){
+      try{return await originalToggle.apply(this,arguments);}catch(e){console.warn('payment server sync:',e);}
+    }
+  };
+
+  const originalNote=window.v405SaveInlineNote;
+  window.v405SaveInlineNote=async function(memberId,input){
+    const m=find(memberId);
+    if(m&&input){
+      const current=oldRec(m); let amount=Number(current.amount)||0;
+      try{amount=Number(input.closest('.v405-row')?.querySelector('[data-alloc]')?.value)||amount;}catch(e){}
+      persist(m,{amount,paid:!!current.paid,note:String(input.value||'').trim(),paid_at:current.paid_at||null,paid_by_user_id:current.paid_by_user_id||null,paid_by_nickname:current.paid_by_nickname||null,time_class:current.time_class||''});
+    }
+    if(typeof originalNote==='function'){
+      try{return await originalNote.apply(this,arguments);}catch(e){console.warn('note server sync:',e);}
+    }
+  };
+
+  // 분배금 화면을 그릴 때마다 로컬 지급 상태를 먼저 복원한다.
+  const wrapRender=()=>{
+    if(typeof window.__v405RenderDistribution!=='function'||window.__v405RenderDistribution.__v10wrapped)return false;
+    const base=window.__v405RenderDistribution;
+    const wrapped=function(){hydrate();return base.apply(this,arguments);};
+    wrapped.__v10wrapped=true;window.__v405RenderDistribution=wrapped;return true;
+  };
+  let tries=0;
+  const timer=setInterval(()=>{
+    tries++;
+    hydrate();wrapRender();
+    if(tries>40)clearInterval(timer);
+  },250);
+  document.addEventListener('DOMContentLoaded',()=>{hydrate();wrapRender();});
+})();
+</script>
 </body>
 </html>
 
