@@ -1678,7 +1678,37 @@ window.updateParticipantSummary=function(){
     return out;
   };
   let state=normalize(localGet());
+  let serverSnapshot=normalize(localGet());
   let loadedFromServer=false;
+  function cloneState(x){try{return JSON.parse(JSON.stringify(x||empty()))}catch(e){return normalize(x)}}
+  function paymentChanged(a,b){return JSON.stringify(a||{})!==JSON.stringify(b||{})}
+  function mergeServerState(server){
+    const base=normalize(server);
+    const snap=normalize(serverSnapshot);
+    const local=normalize(state);
+    const merged=cloneState(base);
+    // Only overwrite fields this browser actually changed since its last server load.
+    if(Number(local.diamond)!==Number(snap.diamond)) merged.diamond=Number(local.diamond)||0;
+    const keys=new Set([...Object.keys(snap.payments||{}),...Object.keys(local.payments||{}),...Object.keys(base.payments||{})]);
+    keys.forEach(k=>{
+      const before=snap.payments?.[k]; const now=local.payments?.[k];
+      if(paymentChanged(before,now)){
+        if(now==null) delete merged.payments[k]; else merged.payments[k]=cloneState(now);
+      }
+    });
+    if(JSON.stringify(local.timeClass||{})!==JSON.stringify(snap.timeClass||{})) merged.timeClass=cloneState(local.timeClass||{});
+    if(JSON.stringify(local.notes||[])!==JSON.stringify(snap.notes||[])){
+      const oldNotes=Array.isArray(snap.notes)?snap.notes:[]; const nowNotes=Array.isArray(local.notes)?local.notes:[];
+      // Merge note additions/deletions conservatively: preserve server notes and add new local posts.
+      const serverIds=new Set((Array.isArray(base.notes)?base.notes:[]).map(x=>x?.id).filter(Boolean));
+      const localIds=new Set(nowNotes.map(x=>x?.id).filter(Boolean));
+      const oldIds=new Set(oldNotes.map(x=>x?.id).filter(Boolean));
+      const additions=nowNotes.filter(x=>x?.id && !oldIds.has(x.id));
+      merged.notes=(Array.isArray(base.notes)?base.notes:[]).filter(x=>localIds.has(x?.id)||!oldIds.has(x?.id));
+      additions.forEach(x=>{if(!serverIds.has(x.id))merged.notes.push(x)});
+    }
+    return normalize(merged);
+  }
   function memberId(m){return String(m?.[4]??m?.[0]??'');}
   function memberRows(){return (Array.isArray(members)?members:[]).filter(m=>Number(m?.[1])!==100);}
   function ordered(){
@@ -1701,6 +1731,7 @@ window.updateParticipantSummary=function(){
       if(r.data?.payload && meaningful(server)) state=server;
       else if(meaningful(local)) state=local;
       else state=server;
+      serverSnapshot=cloneState(state);
       loadedFromServer=!!r.data;
       localSet(state);
       return true;
@@ -1708,9 +1739,16 @@ window.updateParticipantSummary=function(){
   }
   async function writeServer(){
     if(!canUse())return false;
-    const r=await cloudClient.from('clan_private_state').upsert({clan_id:CLOUD_CLAN_ID,state_key:STATE_KEY,payload:state,updated_at:new Date().toISOString()},{onConflict:'clan_id,state_key'});
+    // IMPORTANT: do not overwrite the whole shared distribution state with a stale browser copy.
+    // Read the latest server state and merge only fields changed in this browser. This lets the
+    // lord, admins and page owner safely edit different members without erasing one another.
+    const latest=await cloudClient.from('clan_private_state').select('state_key,payload').eq('clan_id',CLOUD_CLAN_ID).eq('state_key',STATE_KEY).maybeSingle();
+    if(latest.error)throw latest.error;
+    const latestState=normalize(latest.data?.payload);
+    const merged=mergeServerState(latestState);
+    const r=await cloudClient.from('clan_private_state').upsert({clan_id:CLOUD_CLAN_ID,state_key:STATE_KEY,payload:merged,updated_at:new Date().toISOString()},{onConflict:'clan_id,state_key'});
     if(r.error)throw r.error;
-    loadedFromServer=true;return true;
+    state=merged; serverSnapshot=cloneState(merged); localSet(state); loadedFromServer=true;return true;
   }
   async function persist(successMessage){
     localSet(state);
