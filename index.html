@@ -1511,21 +1511,12 @@ window.updateParticipantSummary=function(){
   const esc=v=>typeof escapeHtml==='function'?escapeHtml(String(v??'')):String(v??'');
   const rows=()=> (Array.isArray(members)?members:[]).filter(m=>Number(m?.[1])!==100);
   const rankMap=()=> typeof getRanks==='function'?getRanks():{};
+  // 분배금 관리 순서는 인원 관리 탭의 No. 순서를 그대로 사용한다.
+  // 분배금 페이지에서 별도의 랭킹/레벨/이름 정렬을 다시 적용하지 않는다.
   function sortedRows(){
-    const rs=rows().slice(), ranks=rankMap(), mode=readLS(SORT_KEY,'rank');
-    const roleOrder={'페이지 소유자':0,'군주':1,'관리자':2,'수호':3,'일반':4};
-    rs.sort((a,b)=>{
-      if(mode==='level') return (Number(b[1])||0)-(Number(a[1])||0)||String(a[0]).localeCompare(String(b[0]),'ko');
-      if(mode==='name') return String(a[0]).localeCompare(String(b[0]),'ko');
-      if(mode==='standard') {
-        const ra=roleOrder[a[0]==='베키'?'페이지 소유자':(a[3]||'일반')]??4;
-        const rb=roleOrder[b[0]==='베키'?'페이지 소유자':(b[3]||'일반')]??4;
-        return ra-rb||(Number(b[1])||0)-(Number(a[1])||0)||String(a[0]).localeCompare(String(b[0]),'ko');
-      }
-      const ar=Number(ranks[a[0]]),br=Number(ranks[b[0]]), ah=Number.isFinite(ar),bh=Number.isFinite(br);
-      return (ah&&bh?ar-br:ah?-1:bh?1:0)||((Number(b[1])||0)-(Number(a[1])||0))||String(a[0]).localeCompare(String(b[0]),'ko');
-    });
-    return rs;
+    const base=rows();
+    if(typeof window.getOrderedMembers==='function') return window.getOrderedMembers(base);
+    return base.slice();
   }
   function dist(m){
     const id=String(m?.[4]??m?.[0]??''), name=String(m?.[0]??'');
@@ -1655,11 +1646,11 @@ window.updateParticipantSummary=function(){
     const paidAll=all.filter(m=>!!record(m).paid), total=all.reduce((s,m)=>s+amount(m,data),0), paidAmount=paidAll.reduce((s,m)=>s+amount(m,data),0);
     const filtered=all.filter(m=>filter==='paid'?!!record(m).paid:filter==='todo'?!record(m).paid:true);
     const alloc=filtered.map((m,i)=>{
-      const r=record(m), paid=!!r.paid, amt=amount(m,data), rk=rankValue(m), note=String(r.note||'');
+      const r=record(m), paid=!!r.paid, amt=amount(m,data), note=String(r.note||'');
       const cls=String(m[2]||'모름');
       return '<div class="v405-row '+(paid?'is-paid':'')+'">'+
         '<div class="v405-no">'+(all.indexOf(m)+1)+'</div>'+
-        '<div class="v405-member"><div class="v405-name"><b>'+esc(m[0])+'</b><span class="v405-status '+(paid?'done':'todo')+'">'+(paid?'🟢 지급완료':'🟡 미지급')+'</span></div><div class="v405-meta">'+esc(cls)+' · Lv.'+esc(m[1])+(rk!==null?' · 랭킹 '+rk:'')+'</div></div>'+
+        '<div class="v405-member"><div class="v405-name"><b>'+esc(m[0])+'</b><span class="v405-status '+(paid?'done':'todo')+'">'+(paid?'🟢 지급완료':'🟡 미지급')+'</span></div><div class="v405-meta">'+esc(cls)+' · Lv.'+esc(m[1])+'</div></div>'+
         '<div class="v405-amount"><input type="number" min="0" data-alloc="'+esc(m[0])+'" value="'+amt+'" oninput="updateMemoTotals()"><b>D</b></div>'+
         '<button type="button" class="mini v405-pay" onclick="v39TogglePaid(\''+esc(String(m[4]??m[0]))+'\')">'+(paid?'지급취소':'지급')+'</button>'+ 
         '<input class="v405-note" value="'+esc(note)+'" placeholder="특이사항 메모를 입력하세요..." data-note-member="'+esc(String(m[4]??m[0]))+'" onkeydown="if(event.key===&quot;Enter&quot;){event.preventDefault();v405SaveInlineNote(this.dataset.noteMember,this)}" onblur="if(this.value.trim()!==this.dataset.saved){v405SaveInlineNote(this.dataset.noteMember,this)}">'+
