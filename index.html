@@ -1730,7 +1730,24 @@ window.updateParticipantSummary=function(){
   window.v406TogglePaid=async function(id){
     if(!canView())return toastOk('분배금 관리 권한이 없습니다.');
     const m=memberRows().find(x=>memberId(x)===String(id));if(!m)return toastOk('혈맹원을 찾을 수 없습니다.');
-    const r=rec(m);r.amount=Number(document.querySelector(`[data-v406-amount="${CSS.escape(String(id))}"]`)?.value)||Number(r.amount)||0;r.paid=!r.paid;r.paid_at=r.paid?new Date().toISOString():null;r.nickname=m[0];r.member_id=String(id);r.clan_id=CLOUD_CLAN_ID;state.payments[String(id)]=r;
+    const key=String(id),r={...rec(m)};
+    const amountEl=document.querySelector(`[data-v406-amount="${CSS.escape(key)}"]`);
+    const currentAmount=Number(amountEl?.value)||0;
+    const wasPaid=!!r.paid;
+    if(wasPaid){
+      // 지급 취소: 기존 지급액을 즉시 0 D로 되돌리고, 총 분배금/잔여 다이아 계산에서도 바로 제외한다.
+      r.amount=0;
+      r.paid=false;
+      r.paid_at=null;
+      r.paid_by_user_id=null;
+      r.paid_by_nickname=null;
+    }else{
+      // 지급: 화면에서 현재 입력한 금액을 새 지급액으로 사용한다.
+      r.amount=currentAmount;
+      r.paid=true;
+      r.paid_at=new Date().toISOString();
+    }
+    r.nickname=m[0];r.member_id=key;r.clan_id=CLOUD_CLAN_ID;state.payments[key]=r;
     localSet(state);
     if(canUse()){try{await writeServer();}catch(e){return toastOk('지급 상태 저장에 실패했습니다: '+(e.message||e));}}
     render();toastOk(r.paid?'지급되었습니다.':'지급이 취소되었습니다.');
