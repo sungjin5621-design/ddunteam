@@ -689,7 +689,7 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
   window.renderLetters=function(){const data=load(LS.letters,[]).sort((a,b)=>b.createdAt-a.createdAt),page=window._letterPage||1,total=Math.max(1,Math.ceil(data.length/20)),items=data.slice((page-1)*20,page*20);return `<div class="card data-page"><div class="head"><div><div class="title">♥ 마음의 편지함</div><div class="admin-sub">혈맹원이 관리진에게 남기는 비밀 문의/건의함</div></div><button class="ghost" onclick="openLetterEditor()">+ 글 작성</button></div><div class="letter-list">${items.length?items.map((x,idx)=>`<div class="letter-row" onclick="openLetter(${data.indexOf(x)})"><div><span class="status status-${x.status||'대기중'}">${x.status||'대기중'}</span>${x.anonymous?'<span class="anon">익명</span>':''}</div><b>${canManage()||isPageOwner()||rankOf(currentNick)==='군주'?escapeHtml(x.title):'🔒 비밀 글입니다.'}</b><span>${x.anonymous?'익명':escapeHtml(x.author||'알 수 없음')}</span><time>${new Date(x.createdAt).toLocaleDateString('ko-KR')}</time></div>`).join(''):'<div class="empty">등록된 편지가 없습니다.</div>'}</div><div class="pagination">${Array.from({length:total},(_,i)=>`<button class="${i+1===page?'active':''}" onclick="window._letterPage=${i+1};showPage('letter',document.querySelector('#tabs button.active'))">${i+1}</button>`).join('')}</div></div>`};
   window.openLetterEditor=function(i=null){const d=load(LS.letters,[]),x=i===null?{title:'',body:'',anonymous:false,status:'대기중',author:currentNick,comments:[]}:d[i];openModal(`<div class="modal-head"><h3>${i===null?'마음의 편지 작성':'마음의 편지 수정'}</h3><button class="close" onclick="closeModal()">×</button></div><div class="form"><label>제목<input id="letterTitle" value="${escapeHtml(x.title||'')}"></label><label>내용<textarea id="letterBody">${escapeHtml(x.body||'')}</textarea></label><label class="check-line"><input id="letterAnon" type="checkbox" ${x.anonymous?'checked':''}> 익명으로 등록</label></div><div class="modal-actions"><button onclick="closeModal()">취소</button><button class="primary" onclick="saveLetter(${i===null?'null':i})">저장</button></div>`,'small');};
   window.saveLetter=function(i){const d=load(LS.letters,[]),x={title:document.getElementById('letterTitle').value.trim(),body:document.getElementById('letterBody').value.trim(),anonymous:document.getElementById('letterAnon').checked,status:'대기중',author:currentNick,createdAt:Date.now(),comments:[]};if(!x.title||!x.body)return toast('제목과 내용을 입력해주세요.');if(i===null)d.unshift(x);else d[i]={...d[i],...x};store(LS.letters,d);closeModal();showPage('letter',document.querySelector('#tabs button.active'));};
-  window.openLetter=function(i){const d=load(LS.letters,[]),x=d[i];if(!x)return;const privileged=['페이지 소유자','군주','관리자','수호'].includes(rankOf(currentNick))||isPageOwner();if(!privileged)return openModal(`<div class="modal-head"><h3>🔒 비밀 글입니다.</h3><button class="close" onclick="closeModal()">×</button></div><div class="permission">이 글의 내용은 페이지 소유자 / 군주 / 관리자 / 수호만 열람할 수 있습니다.</div>`);const author=isPageOwner()&&x.anonymous?`익명 · 실제 작성자: ${escapeHtml(x.author)}`:(x.anonymous?'익명':escapeHtml(x.author));openModal(`<div class="modal-head"><div><h3>${escapeHtml(x.title)}</h3><div class="admin-sub">${author} · ${new Date(x.createdAt).toLocaleString('ko-KR')}</div></div><button class="close" onclick="closeModal()">×</button></div><div class="letter-detail"><div class="letter-body">${escapeHtml(x.body)}</div><div class="status-actions"><select id="letterStatus"><option ${x.status==='대기중'?'selected':''}>대기중</option><option ${x.status==='진행중'?'selected':''}>진행중</option><option ${x.status==='완료'?'selected':''}>완료</option></select><button onclick="saveLetterStatus(${i})">상태 저장</button></div><div class="comments"><b>댓글</b>${(x.comments||[]).map(c=>`<div class="comment"><strong>${escapeHtml(c.author)}</strong><span>${escapeHtml(c.text)}</span></div>`).join('')}<div class="comment-input"><input id="commentText" placeholder="댓글을 입력하세요"><button onclick="addLetterComment(${i})">등록</button></div></div></div>`,'small');};
+  window.openLetter=function(i){const d=loadLocal('ddunteam.letters.v35',[]),x=d[i];if(!x)return;const privileged=isPageOwner()||['군주','관리자','수호'].includes(rankOf(currentNick));if(!privileged)return openModal('<div class="modal-head"><h3>🔒 비밀 글입니다.</h3><button class="close" onclick="closeModal()">×</button></div><div class="permission">이 글의 내용은 페이지 소유자 / 군주 / 관리자 / 수호만 열람할 수 있습니다.</div>');const author=isPageOwner()&&x.anonymous?`익명 · 실제 작성자: ${escapeHtml(x.author)}`:(x.anonymous?'익명':escapeHtml(x.author));openModal(`<div class="modal-head"><div><h3>${escapeHtml(x.title)}</h3><div class="admin-sub">${author} · ${new Date(x.createdAt).toLocaleString('ko-KR')}</div></div><button class="close" onclick="closeModal()">×</button></div><div class="letter-detail"><div class="letter-body">${escapeHtml(x.body)}</div><div class="status-actions"><select id="letterStatus"><option ${x.status==='대기중'?'selected':''}>대기중</option><option ${x.status==='진행중'?'selected':''}>진행중</option><option ${x.status==='완료'?'selected':''}>완료</option></select><button onclick="saveLetterStatus(${i})">상태 저장</button><button class="danger" onclick="deleteLetter(${i})">삭제</button></div><div class="comments"><b>댓글</b>${(x.comments||[]).map(c=>`<div class="comment"><strong>${escapeHtml(c.author)}</strong><span>${escapeHtml(c.text)}</span></div>`).join('')}<div class="comment-input"><input id="commentText" placeholder="댓글을 입력하세요"><button onclick="addLetterComment(${i})">등록</button></div></div></div>`,'small');};
   window.saveLetterStatus=function(i){if(!['페이지 소유자','군주','관리자','수호'].includes(rankOf(currentNick))&&!isPageOwner())return toast('관리진만 상태를 변경할 수 있습니다.');const d=load(LS.letters,[]);if(!d[i])return toast('글을 찾을 수 없습니다.');d[i].status=document.getElementById('letterStatus').value;store(LS.letters,d);const extra=document.getElementById('extraPage');if(extra&&typeof renderLetters==='function')extra.innerHTML=renderLetters();toast('상태가 저장되었습니다.');};
   window.addLetterComment=function(i){const t=document.getElementById('commentText').value.trim();if(!t)return;const d=load(LS.letters,[]);d[i].comments=d[i].comments||[];d[i].comments.push({author:currentNick,text:t,at:Date.now()});store(LS.letters,d);openLetter(i);};
 
@@ -818,6 +818,201 @@ document.addEventListener('DOMContentLoaded',()=>{const img=document.querySelect
     @media(max-width:1100px){.allocation-list{grid-template-columns:1fr!important}.memo-page-grid{grid-template-columns:1fr!important}}
   `;document.head.appendChild(style);
   document.addEventListener('DOMContentLoaded',()=>{setTimeout(()=>{syncTopControls();renderMembers();},50);});
+})();
+</script>
+
+<script>
+/* v38 production persistence layer: cloud-backed private pages + safe legacy migration. */
+(function(){
+  const V38={
+    stateTable:'clan_private_state',
+    letterTable:'clan_letters',
+    letterBodyTable:'clan_letter_bodies',
+    memoKey:'memo', inventoryKey:'inventory', memberInfoKey:'memberInfo', itemsKey:'items'
+  };
+  const loadLocal=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v??d}catch(e){return d}};
+  const storeLocal=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+  const oldKeys={
+    letters:['ddunteam.letters.v35','ddunteam.letters.v34.1','ddunteam.letters.v34','ddunteam.letters.v33','clanLetters','letters'],
+    inventory:['ddunteam.inventory.v34','ddunteam.inventory.v33','clanInventory','inventory'],
+    memo:['ddunteam.memo.v34','ddunteam.memo.v33','clanMemo','memo'],
+    memberInfo:['ddunteam.memberInfo.v34','ddunteam.memberInfo.v33','memberInfo'],
+    items:['ddunteam.items.v34','ddunteam.items.v33','clanItems','items']
+  };
+  function legacyData(kind, fallback){
+    const currentKey={letters:'ddunteam.letters.v35',inventory:'ddunteam.inventory.v34',memo:'ddunteam.memo.v34',memberInfo:'ddunteam.memberInfo.v34',items:'ddunteam.items.v34'}[kind];
+    const current=loadLocal(currentKey,null);
+    if(current && ((Array.isArray(current)&&current.length)||(typeof current==='object'&&Object.keys(current).length))) return current;
+    for(const k of (oldKeys[kind]||[])){const v=loadLocal(k,null);if(v && ((Array.isArray(v)&&v.length)||(typeof v==='object'&&Object.keys(v).length))) {storeLocal(currentKey,v);return v;}}
+    return fallback;
+  }
+  async function qState(key){
+    if(!cloudClient||!cloudUser)return null;
+    const {data,error}=await cloudClient.from(V38.stateTable).select('state_key,payload').eq('clan_id',CLOUD_CLAN_ID).eq('state_key',key).maybeSingle();
+    if(error){console.warn('v38 state read',key,error);return null} return data?.payload??null;
+  }
+  async function saveState(key,payload){
+    if(!cloudClient||!cloudUser)return false;
+    const {error}=await cloudClient.from(V38.stateTable).upsert({clan_id:CLOUD_CLAN_ID,state_key:key,payload,updated_at:new Date().toISOString(),updated_by_nickname:currentNick},{onConflict:'clan_id,state_key'});
+    if(error){console.error('v38 state save',key,error);toast('저장 실패: '+(error.message||'Supabase 오류'));return false} return true;
+  }
+  async function migrateState(key,payload){
+    const ok=await saveState(key,payload);return ok;
+  }
+  async function loadStateOrMigrate(key, fallback){
+    const remote=await qState(key);
+    if(remote!==null){storeLocal('ddunteam.'+key+'.v38',remote);return remote;}
+    const local=legacyData(key,fallback);
+    if(local && ((Array.isArray(local)&&local.length)||(typeof local==='object'&&Object.keys(local).length))) await migrateState(key,local);
+    return local;
+  }
+
+  async function loadLettersCloud(){
+    if(!cloudClient||!cloudUser)return;
+    const {data:headers,error:hErr}=await cloudClient.from(V38.letterTable).select('id,status,anonymous,author_nickname,created_at,updated_at').eq('clan_id',CLOUD_CLAN_ID).order('created_at',{ascending:false});
+    if(hErr){console.warn('v38 letters header read',hErr);return;}
+    const existing=legacyData('letters',[]);
+    if((headers||[]).length===0 && Array.isArray(existing) && existing.length){
+      for(const x of existing){
+        const created=new Date(x.createdAt||Date.now()).toISOString();
+        const {data:row,error}=await cloudClient.from(V38.letterTable).insert({clan_id:CLOUD_CLAN_ID,status:x.status||'대기중',anonymous:!!x.anonymous,author_nickname:x.author||'알 수 없음',created_at:created,updated_at:created}).select('id').single();
+        if(error||!row)continue;
+        await cloudClient.from(V38.letterBodyTable).insert({id:row.id,clan_id:CLOUD_CLAN_ID,title:x.title||'',body:x.body||'',comments:Array.isArray(x.comments)?x.comments:[],updated_at:created});
+      }
+      return loadLettersCloud();
+    }
+    const privileged=isPageOwner()||['군주','관리자','수호'].includes(rankOf(currentNick));
+    let bodyMap={};
+    if(privileged && headers?.length){
+      const {data:bodies,error:bErr}=await cloudClient.from(V38.letterBodyTable).select('id,title,body,comments,updated_at').eq('clan_id',CLOUD_CLAN_ID);
+      if(!bErr) bodyMap=Object.fromEntries((bodies||[]).map(x=>[String(x.id),x]));
+    }
+    const rows=(headers||[]).map(h=>{const b=bodyMap[String(h.id)]||{};return {id:h.id,title:b.title||'',body:b.body||'',anonymous:!!h.anonymous,status:h.status||'대기중',author:h.author_nickname||'알 수 없음',createdAt:new Date(h.created_at).getTime(),comments:Array.isArray(b.comments)?b.comments:[]};});
+    storeLocal('ddunteam.letters.v35',rows);
+  }
+  async function saveLetterCloud(i){
+    const d=loadLocal('ddunteam.letters.v35',[]),x=d[i];if(!x)return false;
+    const created=new Date(x.createdAt||Date.now()).toISOString();
+    if(x.id){
+      const {error:hErr}=await cloudClient.from(V38.letterTable).update({status:x.status||'대기중',anonymous:!!x.anonymous,author_nickname:x.author||'알 수 없음',updated_at:new Date().toISOString()}).eq('id',x.id).eq('clan_id',CLOUD_CLAN_ID);
+      if(hErr){toast('편지 저장 실패: '+hErr.message);return false;}
+      const {error:bErr}=await cloudClient.from(V38.letterBodyTable).upsert({id:x.id,clan_id:CLOUD_CLAN_ID,title:x.title||'',body:x.body||'',comments:Array.isArray(x.comments)?x.comments:[],updated_at:new Date().toISOString()},{onConflict:'id'});
+      if(bErr){toast('편지 본문 저장 실패: '+bErr.message);return false;}
+    }else{
+      const {data,error:insertError}=await cloudClient.from(V38.letterTable).insert({clan_id:CLOUD_CLAN_ID,status:x.status||'대기중',anonymous:!!x.anonymous,author_nickname:x.author||'알 수 없음',created_at:created,updated_at:new Date().toISOString()}).select('id').single();
+      if(insertError||!data){toast('편지 저장 실패: '+(insertError?.message||'DB 오류'));return false;}
+      x.id=data.id;
+      const {error:bErr}=await cloudClient.from(V38.letterBodyTable).insert({id:x.id,clan_id:CLOUD_CLAN_ID,title:x.title||'',body:x.body||'',comments:Array.isArray(x.comments)?x.comments:[],updated_at:new Date().toISOString()});
+      if(bErr){toast('편지 본문 저장 실패: '+bErr.message);return false;}
+      storeLocal('ddunteam.letters.v35',d);
+    }
+    return true;
+  }
+
+  const baseCloudLoad=window.cloudLoad;
+  window.cloudLoad=async function(){
+    await baseCloudLoad();
+    if(!cloudReady)return;
+    try{
+      await loadLettersCloud();
+      const inv=await loadStateOrMigrate(V38.inventoryKey,{});storeLocal('ddunteam.inventory.v34',inv||{});
+      const mi=await loadStateOrMigrate(V38.memberInfoKey,{});storeLocal('ddunteam.memberInfo.v34',mi||{});
+      const items=await loadStateOrMigrate(V38.itemsKey,[]);storeLocal('ddunteam.items.v34',items||[]);
+      const memoRemote=await qState(V38.memoKey);
+      if(memoRemote){storeLocal('ddunteam.memo.v34',memoRemote);}
+      else if(isPageOwner()||rankOf(currentNick)==='군주') {
+        const legacy=legacyData('memo',{diamond:0,allocations:{},timeClass:{},notes:''});
+        const payments=Object.keys(legacy.allocations||{});
+        if((+legacy.diamond||0)||legacy.notes||payments.length||Object.keys(legacy.timeClass||{}).length){
+          const ok=await saveState(V38.memoKey,{diamond:+legacy.diamond||0,notes:legacy.notes||'',timeClass:legacy.timeClass||{}});
+          if(ok)storeLocal('ddunteam.memo.v34',legacy);
+        }
+      }
+      // Canonical top-menu order is applied once and persisted locally; no destructive cloud reset.
+      const canonical=['letter','members','memo','inventory','items','misc','enemy'];
+      const cat=categories.map(c=>{const i=canonical.indexOf(c.id);return i<0?c:{...c,order:i+1};});
+      categories=cat;
+      storeLocal('ddunteam.categories.v34',categories);storeLocal('clanCategories',categories);
+    }catch(e){console.error('v38 cloudLoad extension',e)}
+  };
+
+  window.renderInventory=function(){
+    const data=legacyData('inventory',{}),grouped=data||{};const currentWorld=window._inventoryWorld||serverRegions[0];
+    return `<div class="card data-page"><div class="head"><div><div class="title">⬟ 보유 혈맹 리스트</div><div class="admin-sub">서버 이전을 다니며 남겨둔 혈맹을 기록합니다. 저장 데이터는 서버에 보관됩니다.</div></div><button class="ghost" onclick="openInventoryEditor()">+ 혈맹 기록 추가</button></div><div class="inventory-worlds">${serverRegions.map(w=>`<button class="${w===currentWorld?'active':''}" onclick="window._inventoryWorld='${w}';showPage('inventory',document.querySelector('#tabs button.active'))">${w}</button>`).join('')}</div><div class="inventory-server-grid">${Array.from({length:10},(_,i)=>{const sv=currentWorld+' '+String(i+1).padStart(2,'0'),x=grouped[sv];return `<div class="inventory-card ${x?'has-data':''}"><div class="inv-server">${sv}</div>${x?`<b>${escapeHtml(x.name)}</b><span>소유 캐릭: ${escapeHtml(x.owner)}</span><span>서버 이전: ${escapeHtml(x.date||'-')}</span><span>${escapeHtml(x.memo||'')}</span><div class="inv-actions"><button onclick="openInventoryEditor('${sv}')">수정</button><button class="danger" onclick="deleteInventory('${sv}')">삭제</button></div>`:`<div class="inv-empty">기록 없음</div><button class="mini" onclick="openInventoryEditor('${sv}')">기록 추가</button>`}</div>`}).join('')}</div></div>`;
+  };
+  window.openInventoryEditor=function(server){const data=legacyData('inventory',{}),x=data[server||servers[0]]||{name:'',owner:'',date:'',memo:''};openModal(`<div class="modal-head"><h3>보유 혈맹 기록</h3><button class="close" onclick="closeModal()">×</button></div><div class="form"><label>서버<button type="button" class="server-select-display" onclick="openServerMiniPicker()">${escapeHtml(server||servers[0])}</button><input id="invServer" type="hidden" value="${escapeHtml(server||servers[0])}"></label><label>혈맹명<input id="invName" value="${escapeHtml(x.name||'')}"></label><label>소유 캐릭터<input id="invOwner" value="${escapeHtml(x.owner||'')}"></label><label>서버 이전일<input id="invDate" type="date" value="${escapeHtml(x.date||'')}"></label><label>메모<textarea id="invMemo">${escapeHtml(x.memo||'')}</textarea></label></div><div class="modal-actions"><button onclick="closeModal()">취소</button><button class="primary" onclick="saveInventory()">저장</button></div>`,'small');};
+  window.saveInventory=async function(){
+    if(!canClanManage()&&!isPageOwner())return toast('보유 혈맹 기록은 운영진만 저장할 수 있습니다.');
+    const data=legacyData('inventory',{}),sv=document.getElementById('invServer').value;data[sv]={name:document.getElementById('invName').value.trim(),owner:document.getElementById('invOwner').value.trim(),date:document.getElementById('invDate').value,memo:document.getElementById('invMemo').value.trim()};
+    if(!await saveState(V38.inventoryKey,data))return;storeLocal('ddunteam.inventory.v34',data);closeModal();showPage('inventory',document.querySelector('#tabs button.active'));toast('보유 혈맹 기록을 저장했습니다.');
+  };
+  window.deleteInventory=async function(s){if(!isPageOwner()&&!['군주','관리자'].includes(rankOf(currentNick)))return toast('삭제 권한이 없습니다.');if(!confirm(s+' 기록을 삭제할까요?'))return;const d=legacyData('inventory',{});delete d[s];if(!await saveState(V38.inventoryKey,d))return;storeLocal('ddunteam.inventory.v34',d);showPage('inventory',document.querySelector('#tabs button.active'));};
+
+  window.saveMemberManagement=async function(){
+    const info=legacyData('memberInfo',{});document.querySelectorAll('[data-mm]').forEach(e=>{const k=e.dataset.mm;info[k]=info[k]||{};info[k][e.dataset.field]=e.value.trim();});
+    if(!await saveState(V38.memberInfoKey,info))return;storeLocal('ddunteam.memberInfo.v34',info);toast('인원 관리 정보를 저장했습니다.');
+  };
+  window.saveItems=async function(){
+    const out=[...document.querySelectorAll('[data-item-row]')].map(r=>{const o={};r.querySelectorAll('[data-item]').forEach(e=>o[e.dataset.item]=e.value);return o}).filter(x=>x.name);if(!await saveState(V38.itemsKey,out))return;storeLocal('ddunteam.items.v34',out);toast('아이템 분배 현황을 저장했습니다.');
+  };
+
+  // Letters: list remains visible to everyone, body is only fetched/displayed for privileged roles.
+  window.renderLetters=function(){const data=loadLocal('ddunteam.letters.v35',[]).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)),page=window._letterPage||1,total=Math.max(1,Math.ceil(data.length/20)),items=data.slice((page-1)*20,page*20);return `<div class="card data-page"><div class="head"><div><div class="title">♥ 마음의 편지함</div><div class="admin-sub">혈맹원이 관리진에게 남기는 비밀 문의/건의함 · 서버 저장</div></div><button class="ghost" onclick="openLetterEditor()">+ 글 작성</button></div><div class="letter-list">${items.length?items.map((x)=>`<div class="letter-row" onclick="openLetter(${data.indexOf(x)})"><div><span class="status status-${x.status||'대기중'}">${x.status||'대기중'}</span>${x.anonymous?'<span class="anon">익명</span>':''}</div><b>${isPageOwner()||['군주','관리자','수호'].includes(rankOf(currentNick))?escapeHtml(x.title||'제목 없음'):'🔒 비밀 글입니다.'}</b><span>${x.anonymous?'익명':escapeHtml(x.author||'알 수 없음')}</span><time>${new Date(x.createdAt||Date.now()).toLocaleDateString('ko-KR')}</time></div>`).join(''):'<div class="empty">등록된 편지가 없습니다.</div>'}</div><div class="pagination">${Array.from({length:total},(_,i)=>`<button class="${i+1===page?'active':''}" onclick="window._letterPage=${i+1};showPage('letter',document.querySelector('#tabs button.active'))">${i+1}</button>`).join('')}</div></div>`;};
+  window.saveLetter=async function(i){
+    const d=loadLocal('ddunteam.letters.v35',[]),editing=i!==null&&i!==undefined,old=editing?d[i]:null,x={title:document.getElementById('letterTitle').value.trim(),body:document.getElementById('letterBody').value.trim(),anonymous:document.getElementById('letterAnon').checked,status:old?.status||'대기중',author:old?.author||currentNick,createdAt:old?.createdAt||Date.now(),comments:old?.comments||[]};if(!x.title||!x.body)return toast('제목과 내용을 입력해주세요.');if(editing)d[i]={...old,...x};else d.unshift(x);storeLocal('ddunteam.letters.v35',d);if(cloudReady){if(!await saveLetterCloud(editing?i:0))return;}closeModal();showPage('letter',document.querySelector('#tabs button.active'));toast('마음의 편지를 저장했습니다.');
+  };
+  window.saveLetterStatus=async function(i){if(!['페이지 소유자','군주','관리자','수호'].includes(rankOf(currentNick))&&!isPageOwner())return toast('관리진만 상태를 변경할 수 있습니다.');const d=loadLocal('ddunteam.letters.v35',[]);if(!d[i])return toast('글을 찾을 수 없습니다.');d[i].status=document.getElementById('letterStatus').value;storeLocal('ddunteam.letters.v35',d);if(cloudReady&&!await saveLetterCloud(i))return;showPage('letter',document.querySelector('#tabs button.active'));toast('상태가 저장되었습니다.');};
+  window.addLetterComment=async function(i){const t=document.getElementById('commentText').value.trim();if(!t)return;const d=loadLocal('ddunteam.letters.v35',[]);if(!d[i])return;d[i].comments=d[i].comments||[];d[i].comments.push({author:currentNick,text:t,at:Date.now()});storeLocal('ddunteam.letters.v35',d);if(cloudReady&&!await saveLetterCloud(i))return;openLetter(i);};
+  window.deleteLetter=async function(i){if(!isPageOwner()&&!['군주','관리자','수호'].includes(rankOf(currentNick)))return toast('편지 삭제 권한이 없습니다.');const d=loadLocal('ddunteam.letters.v35',[]),x=d[i];if(!x)return;if(!confirm('이 편지를 삭제할까요?'))return;if(cloudReady&&x.id){const {error}=await cloudClient.from(V38.letterTable).delete().eq('id',x.id).eq('clan_id',CLOUD_CLAN_ID);if(error)return toast('삭제 실패: '+error.message);}d.splice(i,1);storeLocal('ddunteam.letters.v35',d);closeModal();showPage('letter',document.querySelector('#tabs button.active'));toast('편지를 삭제했습니다.');};
+
+  // Production memo save: use the existing distribution tables for amounts/status and a dedicated state row for notes/diamond/time class.
+  const baseMemo=window.renderPrivateMemo;
+  window.renderPrivateMemo=function(){
+    const html=baseMemo();
+    return html;
+  };
+  const baseSaveMemo=window.savePrivateMemo;
+  window.savePrivateMemo=async function(){
+    if(!isPageOwner()&&rankOf(currentNick)!=='군주')return toast('소유자와 군주만 사용할 수 있습니다.');
+    const diamond=+document.getElementById('memoDiamond').value||0,notes=document.getElementById('privateNotes').value.trim(),allocations={},timeClass={};
+    document.querySelectorAll('[data-alloc]').forEach(e=>allocations[e.dataset.alloc]=+e.value||0);document.querySelectorAll('[data-time]').forEach(e=>timeClass[e.dataset.time]=e.value);
+    const old=legacyData('memo',{diamond:0,allocations:{},timeClass:{},notes:''});
+    const merged={diamond,notes,allocations:{...(old.allocations||{}),...allocations},timeClass:{...(old.timeClass||{}),...timeClass}};
+    storeLocal('ddunteam.memo.v34',merged);
+    if(!await saveState(V38.memoKey,{diamond,notes,timeClass:merged.timeClass}))return;
+    // Amounts + time classes are also kept in distribution payment rows.
+    if(cloudReady){
+      const paymentRows=members.filter(m=>+m[1]!==100).map(m=>{const r=distributionRecord(m);return {clan_id:CLOUD_CLAN_ID,member_id:m[4]||null,nickname:m[0],amount:allocations[m[0]]??r.amount??0,paid:!!r.paid,paid_at:r.paid_at||null,paid_by_user_id:r.paid_by_user_id||null,paid_by_nickname:r.paid_by_nickname||null,note:r.note||'',time_class:timeClass[m[0]]??r.time_class??''};});
+      const {error}=await cloudClient.from('clan_distribution_payments').upsert(paymentRows,{onConflict:'clan_id,member_id'});if(error)return distributionDbError(error);
+      await cloudRefresh();
+    }
+    toast('뚠뚠 메모장을 저장했습니다.');
+  };
+
+  // Main calendar: no event preview labels, holidays only.
+  const baseRenderCalendar=window.renderCalendar;
+  window.renderCalendar=function(){if(typeof baseRenderCalendar==='function')baseRenderCalendar();const el=document.getElementById('calendar');if(el)el.querySelectorAll('.mini-cal-event').forEach(e=>e.remove());};
+
+  // Keep both top controls visible for the page owner.
+  function syncV38Controls(){const owner=isPageOwner();const e=document.getElementById('categoryEditBtn'),a=document.getElementById('adminBtn');if(e)e.style.display=owner?'inline-block':'none';if(a)a.style.display=owner?'inline-block':'none';}
+  const rAll=window.renderAll;window.renderAll=function(){if(typeof rAll==='function')rAll();syncV38Controls();};
+  const sPage=window.showPage;window.showPage=function(page,btn){if(typeof sPage==='function')sPage(page,btn);syncV38Controls();};
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(syncV38Controls,100));
+
+  const css=document.createElement('style');css.textContent=`
+    #calendar .mini-cal-event{display:none!important}
+    .top-actions{display:flex!important;align-items:center;gap:8px;flex-wrap:nowrap}
+    .memo-page-grid{grid-template-columns:minmax(0,1fr) minmax(300px,380px)!important;align-items:start}
+    .memo-page-grid>.card{min-width:0;overflow:hidden}
+    .allocation-list{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+    .allocation-row{grid-template-columns:minmax(0,1fr) 74px 12px 52px 36px!important;min-width:0}
+    .allocation-row>*{min-width:0}
+    .allocation-row input{width:100%;box-sizing:border-box}
+    .time-grid{grid-template-columns:repeat(2,minmax(0,1fr));min-width:0}
+    .time-row{min-width:0}
+    .time-row select{width:100%;min-width:0;box-sizing:border-box}
+    @media(max-width:1100px){.memo-page-grid{grid-template-columns:1fr!important}.allocation-list{grid-template-columns:1fr!important}}
+  `;document.head.appendChild(css);
 })();
 </script>
 </body>
