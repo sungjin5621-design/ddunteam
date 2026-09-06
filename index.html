@@ -1784,6 +1784,77 @@ window.updateParticipantSummary=function(){
 })();
 </script>
 
+
+<script id="v405-final-member-action-fix">
+(function(){
+  'use strict';
+  // 분배금 액션은 DB id가 없어도 동작하도록 닉네임을 canonical key로 사용한다.
+  // 인원 관리에서 내려온 members 배열은 로컬 상태에서는 [닉네임,레벨,클래스,등급]일 수 있고,
+  // Supabase 로드 후에는 [닉네임,레벨,클래스,등급,id,notes,user_id] 형태일 수 있다.
+  const getMembers=()=>Array.isArray(window.members)?window.members:[];
+  const findMember=(key)=>{
+    const k=String(key??'');
+    return getMembers().find(m=>String(m?.[0]??'')===k || String(m?.[4]??'')===k || String(m?.[6]??'')===k);
+  };
+  const notify=(msg)=>{try{if(typeof safeToast==='function')safeToast(msg);else if(typeof toast==='function')toast(msg);else console.info(msg)}catch(e){console.info(msg)}};
+  const read=()=>{try{return JSON.parse(localStorage.getItem((window.LS&&LS.memo)||'ddunteam.memo.v34')||'null')||{diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}}}catch(e){return {diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}}}};
+  const write=d=>{try{localStorage.setItem((window.LS&&LS.memo)||'ddunteam.memo.v34',JSON.stringify(d));return true}catch(e){console.warn(e);return false}};
+  const record=m=>{try{if(typeof window.v39DistributionRecord==='function')return window.v39DistributionRecord(m)||{}}catch(e){};const p=window.__v39Dist?.payments||{};return p[String(m?.[4]??m?.[0]??'')]||p[String(m?.[0]??'')]||{amount:0,paid:false,note:'',time_class:''}};
+  const can=()=>{try{return typeof canDist==='function'?canDist():((typeof isPageOwner==='function'&&isPageOwner())||(typeof rankOf==='function'&&rankOf(currentNick)==='군주'))}catch(e){return true}};
+
+  window.v39TogglePaid=async function(memberKey){
+    if(!can())return notify('소유자와 군주만 분배금을 관리할 수 있습니다.');
+    const m=findMember(memberKey);
+    if(!m)return notify('혈맹원을 찾을 수 없습니다.');
+    const old=record(m);
+    const input=[...document.querySelectorAll('[data-alloc]')].find(e=>String(e.dataset.alloc)===String(m[0]));
+    const amount=Number(input?.value)||Number(old.amount)||0;
+    const paid=!old.paid;
+    const id=String(m[4]??m[0]);
+    const payload={clan_id:window.CLOUD_CLAN_ID,member_id:id,nickname:String(m[0]),amount,paid,paid_at:paid?new Date().toISOString():null,paid_by_user_id:paid&&window.cloudUser?window.cloudUser.id:null,paid_by_nickname:paid?window.currentNick:null,note:String(old.note||''),time_class:String(old.time_class||'')};
+    try{
+      window.__v39Dist=window.__v39Dist||{};window.__v39Dist.ready=true;window.__v39Dist.payments=window.__v39Dist.payments||{};
+      window.__v39Dist.payments[id]=payload;
+      const d=read();d.allocations=d.allocations||{};d.allocations[m[0]]=amount;d.distributionNotes=d.distributionNotes||{};d.distributionNotes[m[0]]=String(old.note||'');write(d);
+      notify(paid?'지급되었습니다.':'지급이 취소되었습니다.');
+      // 서버 동기화는 실패해도 UI 성공을 되돌리지 않는다.
+      Promise.resolve().then(async()=>{
+        try{
+          if(window.__v39Dist.backend==='dedicated'&&window.cloudClient&&window.cloudReady&&window.cloudUser){
+            const q=old.id?window.cloudClient.from('clan_distribution_payments').update(payload).eq('id',old.id):window.cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'});const r=await q;if(r.error)console.warn(r.error);
+          }else if(window.__v39Dist.backend==='private'&&window.cloudClient&&window.cloudReady&&window.cloudUser&&typeof window.savePrivateState==='function'){
+            await window.savePrivateState();
+          }
+        }catch(e){console.warn('distribution payment sync:',e)}
+      });
+      setTimeout(()=>{try{window.__v405RenderDistribution&&window.__v405RenderDistribution()}catch(e){}},0);
+    }catch(e){console.error(e);notify('지급 처리 중 오류가 발생했습니다.');}
+  };
+
+  window.v405SaveInlineNote=async function(memberKey,input){
+    if(!can())return notify('소유자와 군주만 사용할 수 있습니다.');
+    const m=findMember(memberKey);if(!m||!input)return notify('혈맹원을 찾을 수 없습니다.');
+    const note=String(input.value||'').trim(),old=record(m);
+    const amount=Number(input.closest('.v405-row')?.querySelector('[data-alloc]')?.value)||Number(old.amount)||0;
+    try{
+      const id=String(m[4]??m[0]);
+      window.__v39Dist=window.__v39Dist||{};window.__v39Dist.ready=true;window.__v39Dist.payments=window.__v39Dist.payments||{};
+      window.__v39Dist.payments[id]={...old,clan_id:window.CLOUD_CLAN_ID,member_id:id,nickname:String(m[0]),amount,paid:!!old.paid,note,time_class:String(old.time_class||'')};
+      const d=read();d.allocations=d.allocations||{};d.allocations[m[0]]=amount;d.distributionNotes=d.distributionNotes||{};d.distributionNotes[m[0]]=note;
+      if(!write(d))throw new Error('localStorage 저장 실패');
+      input.dataset.saved=note;input.classList.remove('note-dirty');
+      notify('저장되었습니다.');
+      Promise.resolve().then(async()=>{
+        try{
+          const payload={clan_id:window.CLOUD_CLAN_ID,member_id:id,nickname:String(m[0]),amount,paid:!!old.paid,paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note,time_class:String(old.time_class||'')};
+          if(window.__v39Dist.backend==='dedicated'&&window.cloudClient&&window.cloudReady&&window.cloudUser){const q=old.id?window.cloudClient.from('clan_distribution_payments').update(payload).eq('id',old.id):window.cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'});const r=await q;if(r.error)console.warn(r.error)}
+          else if(window.__v39Dist.backend==='private'&&window.cloudClient&&window.cloudReady&&window.cloudUser&&typeof window.savePrivateState==='function')await window.savePrivateState();
+        }catch(e){console.warn('distribution note sync:',e)}
+      });
+    }catch(e){console.error(e);notify('저장 중 오류가 발생했습니다.');}
+  };
+})();
+</script>
 </body>
 </html>
 
@@ -3201,5 +3272,77 @@ window.updateParticipantSummary=function(){
   setTimeout(syncV403Owner,0);
   setTimeout(syncV403Owner,300);
   setTimeout(syncV403Owner,1000);
+})();
+</script>
+
+<script id="v405-fix9-final-actions">
+(function(){
+  'use strict';
+  // IMPORTANT: members is a top-level let, so it is not available as window.members.
+  // Always resolve against the actual lexical members array.
+  const getMembers=()=>{try{return (typeof members!=='undefined'&&Array.isArray(members))?members:[]}catch(e){return []}};
+  const findMember=(key)=>{
+    const k=String(key??'');
+    return getMembers().find(m=>String(m?.[0]??'')===k || String(m?.[4]??'')===k || String(m?.[6]??'')===k);
+  };
+  const notify=(msg)=>{try{if(typeof safeToast==='function')safeToast(msg);else if(typeof toast==='function')toast(msg);else console.info(msg)}catch(e){console.info(msg)}};
+  const memoKey=()=>{try{return (typeof LS!=='undefined'&&LS.memo)||'ddunteam.memo.v34'}catch(e){return 'ddunteam.memo.v34'}};
+  const read=()=>{try{return JSON.parse(localStorage.getItem(memoKey())||'null')||{diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}}}catch(e){return {diamond:0,allocations:{},timeClass:{},notes:'',distributionNotes:{}}}};
+  const write=d=>{try{localStorage.setItem(memoKey(),JSON.stringify(d));return true}catch(e){console.warn('distribution local save',e);return false}};
+  const record=m=>{try{if(typeof distRecord==='function')return distRecord(m)||{}}catch(e){};try{if(typeof window.v39DistributionRecord==='function')return window.v39DistributionRecord(m)||{}}catch(e){};const p=window.__v39Dist?.payments||{};return p[String(m?.[4]??m?.[0]??'')]||p[String(m?.[0]??'')]||{amount:0,paid:false,note:'',time_class:''}};
+  const can=()=>{try{return typeof canDist==='function'?canDist():(typeof isPageOwner==='function'&&isPageOwner())||(typeof rankOf==='function'&&rankOf(currentNick)==='군주')}catch(e){return true}};
+
+  window.v39TogglePaid=async function(memberKey){
+    if(!can())return notify('소유자와 군주만 분배금을 관리할 수 있습니다.');
+    const m=findMember(memberKey);
+    if(!m)return notify('혈맹원을 찾을 수 없습니다.');
+    try{
+      const old=record(m);
+      const input=getMembers().length?[...document.querySelectorAll('[data-alloc]')].find(e=>String(e.dataset.alloc)===String(m[0])):null;
+      const amount=Number(input?.value)||Number(old.amount)||0;
+      const paid=!old.paid;
+      const id=String(m[4]??m[0]);
+      window.__v39Dist=window.__v39Dist||{};window.__v39Dist.ready=true;window.__v39Dist.payments=window.__v39Dist.payments||{};
+      window.__v39Dist.payments[id]={...old,member_id:id,nickname:String(m[0]),amount,paid,paid_at:paid?new Date().toISOString():null,note:String(old.note||''),time_class:String(old.time_class||'')};
+      const d=read();d.allocations=d.allocations||{};d.allocations[m[0]]=amount;d.distributionNotes=d.distributionNotes||{};d.distributionNotes[m[0]]=String(old.note||'');
+      if(!write(d))throw new Error('localStorage 저장 실패');
+      notify(paid?'지급되었습니다.':'지급이 취소되었습니다.');
+      // Never block the UI on Supabase.
+      Promise.resolve().then(async()=>{
+        try{
+          if(window.__v39Dist.backend==='dedicated'&&typeof cloudClient!=='undefined'&&cloudClient&&typeof cloudReady!=='undefined'&&cloudReady&&typeof cloudUser!=='undefined'&&cloudUser){
+            const payload={clan_id:typeof CLOUD_CLAN_ID!=='undefined'?CLOUD_CLAN_ID:null,member_id:id,nickname:String(m[0]),amount,paid,paid_at:paid?new Date().toISOString():null,paid_by_user_id:paid?cloudUser.id:null,paid_by_nickname:paid?currentNick:null,note:String(old.note||''),time_class:String(old.time_class||'')};
+            const q=old.id?cloudClient.from('clan_distribution_payments').update(payload).eq('id',old.id):cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'});const r=await q;if(r.error)console.warn(r.error);
+          }else if(window.__v39Dist.backend==='private'&&typeof savePrivateState==='function'&&typeof cloudReady!=='undefined'&&cloudReady){await savePrivateState();}
+        }catch(e){console.warn('distribution payment background sync',e)}
+      });
+      setTimeout(()=>{try{if(typeof window.__v405RenderDistribution==='function')window.__v405RenderDistribution()}catch(e){}},0);
+    }catch(e){console.error('distribution payment',e);notify('지급 처리 중 오류가 발생했습니다.');}
+  };
+
+  window.v405SaveInlineNote=async function(memberKey,input){
+    if(!can())return notify('소유자와 군주만 사용할 수 있습니다.');
+    const m=findMember(memberKey);
+    if(!m||!input)return notify('혈맹원을 찾을 수 없습니다.');
+    try{
+      const note=String(input.value||'').trim(),old=record(m);
+      const amount=Number(input.closest('.v405-row')?.querySelector('[data-alloc]')?.value)||Number(old.amount)||0;
+      const id=String(m[4]??m[0]);
+      window.__v39Dist=window.__v39Dist||{};window.__v39Dist.ready=true;window.__v39Dist.payments=window.__v39Dist.payments||{};
+      window.__v39Dist.payments[id]={...old,member_id:id,nickname:String(m[0]),amount,paid:!!old.paid,note,time_class:String(old.time_class||'')};
+      const d=read();d.allocations=d.allocations||{};d.allocations[m[0]]=amount;d.distributionNotes=d.distributionNotes||{};d.distributionNotes[m[0]]=note;
+      if(!write(d))throw new Error('localStorage 저장 실패');
+      input.dataset.saved=note;input.classList.remove('note-dirty');
+      notify('저장되었습니다.');
+      Promise.resolve().then(async()=>{
+        try{
+          if(window.__v39Dist.backend==='dedicated'&&typeof cloudClient!=='undefined'&&cloudClient&&typeof cloudReady!=='undefined'&&cloudReady&&typeof cloudUser!=='undefined'&&cloudUser){
+            const payload={clan_id:typeof CLOUD_CLAN_ID!=='undefined'?CLOUD_CLAN_ID:null,member_id:id,nickname:String(m[0]),amount,paid:!!old.paid,paid_at:old.paid_at||null,paid_by_user_id:old.paid_by_user_id||null,paid_by_nickname:old.paid_by_nickname||null,note,time_class:String(old.time_class||'')};
+            const q=old.id?cloudClient.from('clan_distribution_payments').update(payload).eq('id',old.id):cloudClient.from('clan_distribution_payments').upsert(payload,{onConflict:'clan_id,member_id'});const r=await q;if(r.error)console.warn(r.error);
+          }else if(window.__v39Dist.backend==='private'&&typeof savePrivateState==='function'&&typeof cloudReady!=='undefined'&&cloudReady){await savePrivateState();}
+        }catch(e){console.warn('distribution note background sync',e)}
+      });
+    }catch(e){console.error('distribution note',e);notify('저장 중 오류가 발생했습니다.');}
+  };
 })();
 </script>
