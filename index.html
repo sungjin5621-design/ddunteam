@@ -427,17 +427,47 @@ async function loginDdu(){
 }
 async function logoutDdu(){localStorage.removeItem(LOGIN_KEY);if(cloudClient)await cloudClient.auth.signOut();location.reload();}
 async function cloudInit(){
-  if(!cloudConfigured){setLoginError('Supabase 설정이 필요합니다.');return;}
-  const saved=JSON.parse(localStorage.getItem(LOGIN_KEY)||'null');if(!saved?.nickname){showLogin();return;}
-  let {data:{session}}=await cloudClient.auth.getSession();if(!session){localStorage.removeItem(LOGIN_KEY);showLogin();return;}
-  cloudUser=session.user;await cloudLoad();
-  if(!members.some(m=>m[0]===saved.nickname)){localStorage.removeItem(LOGIN_KEY);showLogin();return;}
-  const mine=members.find(m=>m[0]===saved.nickname);
-  currentNick=mine?saved.nickname:'설정 필요';cloudReady=true;
+  if(!cloudConfigured){setLoginError('Supabase 설정이 완료되지 않았습니다.');return;}
+  let saved=null;
+  try{saved=JSON.parse(localStorage.getItem(LOGIN_KEY)||'null')}catch(e){saved=null}
+  if(!saved?.nickname){showLogin();return;}
+
+  // 자동 로그인: 기존 로그인 기록이 있으면 익명 Supabase 세션이 사라져도
+  // 사용자를 다시 로그인 화면으로 보내지 않는다. 가능한 경우 새 세션을 만든다.
+  try{
+    let {data:{session},error:sessionError}=await cloudClient.auth.getSession();
+    if(sessionError)throw sessionError;
+    if(!session){
+      const r=await cloudClient.auth.signInAnonymously();
+      if(!r.error)session=r.data.session;
+    }
+    if(session)cloudUser=session.user;
+  }catch(e){console.warn('auto auth restore:',e)}
+
+  try{
+    if(cloudUser){
+      await cloudLoad();
+      if(!members.some(m=>String(m[0]||'').trim()===String(saved.nickname||'').trim())){
+        // 서버 목록을 읽을 수 있지만 해당 닉네임이 없을 때만 세션을 종료한다.
+        localStorage.removeItem(LOGIN_KEY);showLogin();return;
+      }
+    }else if(!members.some(m=>String(m[0]||'').trim()===String(saved.nickname||'').trim())){
+      // 서버 인증이 잠시 실패한 경우에도 로컬에 마지막으로 사용한 혈맹원이 있으면 진입을 허용한다.
+      setLoginError('서버 연결이 지연되고 있습니다. 잠시 후 서버와 동기화됩니다.');
+    }
+  }catch(e){
+    console.warn('cloud auto-load failed; keeping local session:',e);
+  }
+
+  currentNick=saved.nickname;
+  cloudReady=!!(cloudUser&&cloudConfigured);
+  try{localStorage.setItem('clanNick',currentNick)}catch(e){}
   const ownerBtn=document.getElementById('ownerClaimBtn');if(ownerBtn)ownerBtn.style.display=cloudOwnerId?'none':'inline-grid';
   const adminBtn=document.getElementById('adminBtn');if(adminBtn)adminBtn.style.display=(String(currentNick||'')==='베키')?'inline-block':'none';
   const logoutBtn=document.getElementById('logoutBtn');if(logoutBtn)logoutBtn.style.display='inline-grid';
-  showApp();cloudSubscribe();renderAll();
+  showApp();
+  try{if(cloudUser)cloudSubscribe();}catch(e){console.warn('subscribe:',e)}
+  try{renderAll();}catch(e){console.error('render after auto login:',e)}
 }
 async function cloudLoad(){
   const [c,m,n,s,k]=await Promise.all([
