@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>뚠뚠팀 · 혈맹 운영 v35</title>
+<title>뚠뚠팀 · 혈맹 운영 v41</title>
 <style>
 :root{--bg:#080b10;--panel:#0e131b;--panel2:#111720;--line:#28333f;--text:#f0f4fa;--muted:#8794a7;--blue:#72a9e8;--orange:#ff844d;--purple:#9c70df;--green:#4bc889;--red:#ef6969}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 "Noto Sans KR",system-ui,sans-serif}button,input,textarea,select{font:inherit}button{cursor:pointer;color:var(--text);border:1px solid #2d3947;background:#111821;border-radius:8px}button:hover{background:#17202b;border-color:#536273}button:disabled{opacity:.4;cursor:not-allowed}
@@ -343,7 +343,7 @@ const CLOUD_URL=window.DDUNTEAM_CONFIG?.supabaseUrl||'';
 const CLOUD_KEY=window.DDUNTEAM_CONFIG?.supabasePublishableKey||'';
 const cloudConfigured=!!CLOUD_URL && !!CLOUD_KEY && !CLOUD_URL.includes('YOUR_PROJECT') && !CLOUD_KEY.includes('YOUR_');
 const cloudClient = cloudConfigured ? window.supabase.createClient(CLOUD_URL,CLOUD_KEY) : null;
-let cloudUser=null, cloudOwnerId=null, cloudReady=false;
+let cloudUser=null, cloudOwnerId=null, cloudReady=false, verifiedNick='', verifiedRole='';
 
 function cloudErr(e){console.error(e);toast(e?.message||'서버와 통신하지 못했습니다.');}
 function goHome(){
@@ -383,33 +383,35 @@ async function loginDdu(){
     }
     cloudUser=session.user;
 
-    const {data:memberRows,error:memberError}=await cloudClient
-      .from('clan_members')
-      .select('*')
-      .eq('clan_id',CLOUD_CLAN_ID);
-    if(memberError)throw memberError;
-
-    const loginMemberRaw=(memberRows||[]).find(x=>String(x.nickname||'').trim()===nick);
-    if(!loginMemberRaw)return setLoginError('등록된 혈맹원 닉네임과 일치하지 않습니다.');
-
-    const role=String(loginMemberRaw.role||'일반').trim();
-    const requiredPassword=(nick==='베키')?'5621':(['군주','관리자','수호'].includes(role)?'12161216':'1216');
-    if(pw!==requiredPassword)return setLoginError('비밀번호가 올바르지 않습니다.');
+    /* v41: 비밀번호 검증은 서버(Supabase ddun_login 함수)에서만 수행합니다. */
+    const lg=await cloudClient.rpc('ddun_login',{p_nick:nick,p_password:pw});
+    if(lg.error){
+      console.error('ddun_login error:',lg.error);
+      if(lg.error.code==='PGRST202'||/ddun_login/.test(lg.error.message||''))return setLoginError('서버 보안 설정(SQL)이 아직 적용되지 않았습니다. 운영자에게 문의해주세요.');
+      return setLoginError('로그인 처리 중 오류가 발생했습니다.');
+    }
+    const res=lg.data||{};
+    if(!res.ok){
+      if(res.error==='too_many_attempts')return setLoginError('로그인 시도가 너무 많습니다. 10분 뒤 다시 시도해주세요.');
+      return setLoginError('닉네임 또는 비밀번호가 올바르지 않습니다.');
+    }
+    verifiedNick=String(res.nickname||nick).trim();
+    verifiedRole=String(res.role||'').trim();
 
     await cloudLoad();
-    if(!members.some(m=>String(m[0]||'').trim()===nick)){
-      throw new Error('등록된 혈맹원 닉네임과 일치하지 않습니다.');
+    if(!members.some(m=>String(m[0]||'').trim()===verifiedNick)){
+      throw new Error('혈맹원 정보를 불러오지 못했습니다.');
     }
 
-    localStorage.setItem(LOGIN_KEY,JSON.stringify({nickname:nick,at:Date.now()}));
-    localStorage.setItem('clanNick',nick);
-    currentNick=nick;
+    localStorage.setItem(LOGIN_KEY,JSON.stringify({nickname:verifiedNick,at:Date.now()}));
+    localStorage.setItem('clanNick',verifiedNick);
+    currentNick=verifiedNick;
     cloudReady=true;
 
     try{
       refreshOwnerControls();
       const ownerBtn=document.getElementById('ownerClaimBtn');if(ownerBtn)ownerBtn.style.display=cloudOwnerId?'none':'inline-grid';
-      const adminBtn=document.getElementById('adminBtn');if(adminBtn)adminBtn.style.display=(String(currentNick||'')==='베키')?'inline-block':'none';
+      const adminBtn=document.getElementById('adminBtn');if(adminBtn)adminBtn.style.display=(verifiedRole==='페이지 소유자')?'inline-block':'none';
       const logoutBtn=document.getElementById('logoutBtn');if(logoutBtn)logoutBtn.style.display='inline-grid';
     }catch(uiSetupErr){console.error('UI setup error after login:',uiSetupErr);}
 
@@ -425,7 +427,7 @@ async function loginDdu(){
     btn.disabled=false;
   }
 }
-async function logoutDdu(){localStorage.removeItem(LOGIN_KEY);if(cloudClient)await cloudClient.auth.signOut();location.reload();}
+async function logoutDdu(){try{if(cloudClient)await cloudClient.rpc('ddun_logout');}catch(e){}localStorage.removeItem(LOGIN_KEY);localStorage.removeItem('clanNick');verifiedNick='';verifiedRole='';if(cloudClient)await cloudClient.auth.signOut();location.reload();}
 async function cloudInit(){
   const savedRaw=localStorage.getItem(LOGIN_KEY)||'null';
   let saved=null;
@@ -514,10 +516,7 @@ async function cloudLoad(){
   });
   // 신규 메뉴의 순서가 기존 메뉴와 겹치지 않도록 정렬 기준을 보정
   categories.filter(c=>!c.fixed).sort((a,b)=>a.order-b.order||a.label.localeCompare(b.label,'ko')).forEach((c,i)=>c.order=i+1);
-  const saved=JSON.parse(localStorage.getItem(LOGIN_KEY)||'null');
-  const savedMember=saved?.nickname?members.find(x=>x[0]===saved.nickname):null;
-  const mine=members.find(x=>x[6]===cloudUser.id);
-  currentNick=savedMember?savedMember[0]:(mine?mine[0]:'설정 필요');
+  currentNick=verifiedNick||'설정 필요';
 }
 function cloudSubscribe(){
   cloudClient.channel('ddunteam-live').on('postgres_changes',{event:'*',schema:'public',table:'clans',filter:'id=eq.ddunteam'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'clan_members',filter:'clan_id=eq.ddunteam'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'clan_notices',filter:'clan_id=eq.ddunteam'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'clan_schedules',filter:'clan_id=eq.ddunteam'},()=>cloudRefresh()).on('postgres_changes',{event:'*',schema:'public',table:'clan_categories',filter:'clan_id=eq.ddunteam'},()=>cloudRefresh()).subscribe();
@@ -531,14 +530,7 @@ function canClanManage(){return !!cloudUser && (cloudUser.id===cloudOwnerId || [
 function canSiteEdit(){return currentNick==="베키" || (!!cloudUser && !!cloudOwnerId && cloudUser.id===cloudOwnerId) || ["군주","관리자"].includes(rankOf(currentNick))}
 function refreshOwnerControls(){const ce=document.getElementById("categoryEditBtn"),ab=document.getElementById("adminBtn");if(ce)ce.style.display=canSiteEdit()?"inline-block":"none";if(ab)ab.style.display=canManage()?"inline-block":"none";}
 
-async function setCurrentNick(){
-  const n=document.getElementById('nickInput').value.trim();
-  if(!n)return toast('닉네임을 입력해주세요.');
-  if(!cloudReady)return toast('서버 연결 중입니다.');
-  if(!members.some(m=>m[0]===n))return toast('등록된 혈맹원 닉네임과 일치하지 않습니다.');
-  localStorage.setItem(LOGIN_KEY,JSON.stringify({nickname:n,at:Date.now()}));
-  currentNick=n;renderCurrent();renderMembers();toast(n+'님으로 설정했습니다.');
-}
+async function setCurrentNick(){toast('닉네임 변경은 로그아웃 후 다시 로그인해주세요.');}
 async function saveMember(i){if(!canClanManage())return toast('혈맹원 관리는 페이지 소유자/군주만 가능합니다.');const n=document.getElementById('f0').value.trim(),lvl=+document.getElementById('f1').value,w=document.getElementById('f2').value,r=document.getElementById('f3').value;if(!n)return toast('닉네임을 입력해주세요.');if(i!==null&&members[i][0]==='베키'&&n!=='베키')return toast('페이지 소유자 닉네임은 변경할 수 없습니다.');if(members.some((m,idx)=>m[0]===n&&idx!==i))return toast('이미 사용 중인 닉네임입니다.');const payload={clan_id:CLOUD_CLAN_ID,nickname:n,level:lvl,weapon:w,role:r};const q=i===null?cloudClient.from('clan_members').insert(payload):cloudClient.from('clan_members').update(payload).eq('id',members[i][4]);const {error}=await q;if(error)return cloudErr(error);await cloudRefresh();closeModal();toast('혈맹원 정보가 저장되었습니다.')}
 
 function openBulkMemberModal(){if(!canClanManage())return toast('혈맹원 관리는 페이지 소유자/군주만 가능합니다.');const row=()=>`<div class="bulk-row"><input class="bulk-nick" placeholder="닉네임"><input class="bulk-level" type="number" min="1" value="90"><button type="button" class="weapon-choice bulk-weapon" onclick="openBulkWeaponPicker(this)">모름</button><select class="bulk-role"><option>일반</option><option>수호</option><option>관리자</option><option>군주</option></select><button type="button" class="bulk-remove" onclick="this.parentElement.remove()">×</button></div>`;openModal(`<div class="modal-head"><div><h3>혈맹원 다중 추가</h3><div class="admin-sub">여러 명을 한 번에 등록할 수 있습니다.</div></div><button class="close" onclick="closeModal()">×</button></div><div class="bulk-head"><span>닉네임</span><span>레벨</span><span>웨폰</span><span>등급</span><span></span></div><div id="bulkRows" class="bulk-table">${row()}</div><div class="bulk-add-row"><button id="bulkAddRowBtn">＋ 행 추가</button><span class="readonly-note">닉네임 중복은 저장 전에 검사합니다.</span></div><div class="modal-actions"><button onclick="closeModal()">취소</button><button class="primary" onclick="saveBulkMembers()">한 번에 저장</button></div>`,'wide');document.getElementById('bulkAddRowBtn').onclick=()=>document.getElementById('bulkRows').insertAdjacentHTML('beforeend',row())}
@@ -2751,12 +2743,7 @@ window.updateParticipantSummary=function(){
 (function(){
   const LOGIN_KEY_V3611='ddunteam.login';
 
-  function getSavedNick(){
-    try{
-      const v=JSON.parse(localStorage.getItem(LOGIN_KEY_V3611)||'null');
-      return v && typeof v.nickname==='string' ? v.nickname.trim() : '';
-    }catch(e){return '';}
-  }
+  function getSavedNick(){return (typeof verifiedNick==='string')?verifiedNick:'';}
 
   /* cloudLoad 이후에도 로그인한 닉네임을 복원 */
   const baseCloudLoad=window.cloudLoad;
@@ -2791,10 +2778,10 @@ window.updateParticipantSummary=function(){
 
   /* 보안상 '베키라는 문자열'만으로 페이지 소유자가 되지 않도록 수정 */
   window.isPageOwner=function(){
-    return !!(cloudUser && cloudOwnerId && cloudUser.id===cloudOwnerId);
+    return verifiedRole==='페이지 소유자' || !!(cloudUser && cloudOwnerId && cloudUser.id===cloudOwnerId);
   };
   window.canSiteEdit=function(){
-    return !!(cloudUser && cloudOwnerId && cloudUser.id===cloudOwnerId);
+    return verifiedRole==='페이지 소유자' || !!(cloudUser && cloudOwnerId && cloudUser.id===cloudOwnerId);
   };
 
   /* 로그인 직후 닉네임을 가장 먼저 확정 */
